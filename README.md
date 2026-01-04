@@ -1,3 +1,4 @@
+# Archived due to feedback of Electron being "slow", feel free to fork.
 # EZ File Manager
 
 A lightweight Linux file manager with a transparent UI and proper XDG Desktop Portal support.
