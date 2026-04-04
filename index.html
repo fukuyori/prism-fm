@@ -21,7 +21,20 @@
 
 <body>
     <div class="app-container">
-        <div class="tab-bar" id="tab-bar"></div>
+        <div class="tab-bar-wrapper">
+            <div class="tab-bar" id="tab-bar"></div>
+            <div class="window-controls" id="window-controls">
+                <button class="window-control-btn" id="win-minimize-btn" title="Minimize">
+                    <svg viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="4.5" width="8" height="1"/></svg>
+                </button>
+                <button class="window-control-btn" id="win-maximize-btn" title="Maximize">
+                    <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="1.5" y="1.5" width="7" height="7"/></svg>
+                </button>
+                <button class="window-control-btn win-close-btn" id="win-close-btn" title="Close">
+                    <svg viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.2"><line x1="1.5" y1="1.5" x2="8.5" y2="8.5"/><line x1="8.5" y1="1.5" x2="1.5" y2="8.5"/></svg>
+                </button>
+            </div>
+        </div>
 
         <div class="toolbar">
             <div class="nav-buttons">

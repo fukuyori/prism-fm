@@ -297,6 +297,15 @@ body {
 }
 
 
+.tab-bar-wrapper {
+    position: relative;
+    -webkit-app-region: drag;
+}
+
+body.platform-linux .tab-bar-wrapper {
+    min-height: 44px;
+}
+
 .tab-bar {
     display: flex;
     align-items: center;
@@ -316,6 +325,52 @@ body.platform-darwin .tab-bar {
 body.platform-linux .tab-bar,
 body.platform-win32 .tab-bar {
     padding-right: 140px;
+}
+
+.window-controls {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    align-items: center;
+    gap: 0;
+    -webkit-app-region: no-drag;
+    z-index: 100;
+}
+
+body.platform-linux .window-controls {
+    display: flex;
+}
+
+.window-control-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    padding: 0;
+    border-radius: 0;
+}
+
+.window-control-btn svg {
+    width: 10px;
+    height: 10px;
+}
+
+.window-control-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+}
+
+.window-control-btn.win-close-btn:hover {
+    background: #c42b1c;
+    color: #fff;
 }
 
 .tab-bar:empty {
