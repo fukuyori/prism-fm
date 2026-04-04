@@ -230,6 +230,13 @@ function createWindow() {
     backgroundColor: "#00000000",
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 10, y: 10 },
+    ...(process.platform === "win32" && {
+      titleBarOverlay: {
+        color: "#00000000",
+        symbolColor: "#ffffff",
+        height: 40,
+      },
+    }),
     icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       nodeIntegration: false,

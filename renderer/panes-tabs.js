@@ -708,6 +708,11 @@ async function init() {
   try {
     await waitForFileManager();
     document.body.classList.add(`platform-${window.fileManager.platform}`);
+    if (window.fileManager.platform === "linux") {
+      document.getElementById("win-minimize-btn")?.addEventListener("click", () => window.fileManager.minimizeWindow());
+      document.getElementById("win-maximize-btn")?.addEventListener("click", () => window.fileManager.maximizeWindow());
+      document.getElementById("win-close-btn")?.addEventListener("click", () => window.fileManager.closeWindow());
+    }
     const { isPicker, pickerOptions } = await resolveStartupContext();
     if (isPicker) {
       document.documentElement.classList.add("picker-mode-early");
