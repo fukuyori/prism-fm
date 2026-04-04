@@ -1,7 +1,7 @@
 {
   "name": "prism-fm",
-  "version": "1.0.0-spumoni.3.2",
-  "description": "A modern, transparent file manager for Linux with glassmorphism UI",
+  "version": "1.0.0-spumoni.3.3",
+  "description": "A modern, transparent file manager for Linux, Windows, and macOS with glassmorphism UI",
   "main": "main.js",
   "scripts": {
     "start": "./scripts/run-electron.sh",

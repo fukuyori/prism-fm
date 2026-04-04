@@ -480,8 +480,45 @@ function scheduleOpsRender() {
   }
 }
 
-function setupThumbnailObserver() { }
-function clearThumbnailObserver() { }
+function setupThumbnailObserver() {
+  clearThumbnailObserver();
+  if (viewMode !== "thumbnail") return;
+
+  thumbnailObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const iconEl = entry.target;
+        const filePath = iconEl.dataset.thumbPath;
+        if (!filePath) continue;
+        thumbnailObserver.unobserve(iconEl);
+
+        const img = new Image();
+        img.onerror = () => {
+          console.error("Thumbnail load failed:", filePath, img.src);
+        };
+        img.onload = () => {
+          iconEl.textContent = "";
+          iconEl.appendChild(img);
+        };
+        img.src = "thumb://" + encodeURIComponent(filePath);
+      }
+    },
+    { root: null, rootMargin: "200px", threshold: 0 },
+  );
+
+  const targets = document.querySelectorAll("[data-thumb-path]");
+  for (const el of targets) {
+    thumbnailObserver.observe(el);
+  }
+}
+
+function clearThumbnailObserver() {
+  if (thumbnailObserver) {
+    thumbnailObserver.disconnect();
+    thumbnailObserver = null;
+  }
+}
 
 function openThemeCustomizer() {
   themeModal = document.getElementById("theme-modal");

@@ -101,6 +101,7 @@ function renderViewMenu(type) {
 
   const updateView = (newView) => {
     viewMode = newView;
+    try { localStorage.setItem("defaultViewMode", newView); } catch { }
     saveCurrentViewSettings();
     rerender();
   };

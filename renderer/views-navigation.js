@@ -141,7 +141,6 @@ function finishNavigation() {
   folderSizeQueue.length = 0;
 
   clearThumbnailObserver();
-  setupThumbnailObserver();
   if (fileList) fileList.scrollTop = 0;
 
   if (scrollLoadObserver) {
@@ -202,6 +201,21 @@ function resolveViewSettings(path) {
     };
   }
 
+  const defaultView = localStorage.getItem("defaultViewMode") || "detailed";
+
+  if (
+    commonDirs &&
+    commonDirs.trash &&
+    normalizePathForCompare(commonDirs.trash) === key
+  ) {
+    return {
+      sortBy: "date",
+      sortAscending: false,
+      groupBy: "none",
+      viewMode: "detailed",
+    };
+  }
+
   if (
     commonDirs &&
     commonDirs.downloads &&
@@ -211,7 +225,7 @@ function resolveViewSettings(path) {
       sortBy: "date",
       sortAscending: false,
       groupBy: "dateModified",
-      viewMode: "detailed",
+      viewMode: defaultView,
     };
   }
 
@@ -219,7 +233,7 @@ function resolveViewSettings(path) {
     sortBy: "name",
     sortAscending: true,
     groupBy: "none",
-    viewMode: "detailed",
+    viewMode: defaultView,
   };
 }
 

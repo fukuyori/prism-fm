@@ -2,6 +2,23 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [1.0.0-spumoni.3.3] - 2026-04-05
+
+### Added
+- **Thumbnail view** -- Image thumbnails loaded via custom `thumb://` protocol with IntersectionObserver for lazy loading; thumbnail size adjustable via slider
+- **List view** -- Compact single-line view with small icons, no size/date columns
+- **Grid view CSS** -- Existing grid view now visually distinct from detailed view
+- **Global default view mode** -- View mode selection applies to all folders (saved in localStorage as `defaultViewMode`); trash folder excluded (always detailed)
+
+### Fixed
+- **macOS transparency** -- Removed `vibrancy` in favor of `transparent: true` + `backgroundColor: "#00000000"` for consistent cross-platform transparency; CSS `backdrop-filter` handles blur on all platforms
+- **macOS process exit** -- App now quits on all platforms when all windows are closed; added `before-quit` handler to ensure clean shutdown
+- **macOS sandbox** -- `--no-sandbox` flag restricted to Linux only (was interfering with GPU compositing on macOS)
+- **Thumbnail observer timing** -- `setupThumbnailObserver` moved from `finishNavigation` (before DOM render) to end of `renderFiles` (after DOM render); also called on virtual scroll chunk load
+
+### Changed
+- **Row height reduced** -- Detailed view padding `8px` to `4px 8px`, list view padding `2px 8px` with smaller icons (20px/16px) for higher density
+
 ## [1.0.0-spumoni.3.2] - 2026-04-04
 
 ### Added
