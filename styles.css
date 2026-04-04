@@ -36,6 +36,10 @@ body {
         -apple-system,
         BlinkMacSystemFont,
         "Roboto",
+        "Meiryo",
+        "Yu Gothic UI",
+        "Hiragino Sans",
+        "Noto Sans CJK JP",
         sans-serif;
     background: transparent;
     color: var(--text-primary);

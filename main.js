@@ -30,6 +30,7 @@ const fs = require("fs").promises;
 const fsSync = require("fs");
 const sizeOf = require("image-size");
 const { fileURLToPath } = require("url");
+const { path7za } = require("7zip-bin");
 
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
@@ -376,7 +377,118 @@ function getWindowsHiddenSet(dirPath) {
   });
 }
 
+let _cachedSid = null;
+async function getWindowsUserSid() {
+  if (_cachedSid) return _cachedSid;
+  const { promisify } = require("util");
+  const { stdout } = await promisify(execFile)(
+    "powershell.exe",
+    ["-NoProfile", "-Command", "([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value"],
+    { windowsHide: true },
+  );
+  _cachedSid = stdout.trim();
+  return _cachedSid;
+}
+
+function parseRecycleBinMeta(buf) {
+  if (buf.length < 28) return null;
+  const version = buf.readInt32LE(0);
+  if (version !== 2 && version !== 1) return null;
+  const sizeLo = buf.readUInt32LE(8);
+  const sizeHi = buf.readUInt32LE(12);
+  const size = sizeHi * 0x100000000 + sizeLo;
+  const timeLo = buf.readUInt32LE(16);
+  const timeHi = buf.readUInt32LE(20);
+  const fileTime = timeHi * 0x100000000 + timeLo;
+  const deletedDate = new Date(fileTime / 10000 - 11644473600000);
+
+  let originalPath = "";
+  if (version === 2) {
+    const pathLen = buf.readInt32LE(24);
+    const pathBuf = buf.slice(28, 28 + pathLen * 2);
+    originalPath = pathBuf.toString("utf16le").replace(/\0+$/, "");
+  } else {
+    const pathBuf = buf.slice(24);
+    originalPath = pathBuf.toString("utf16le").replace(/\0+$/, "");
+  }
+  return { size, deletedDate, originalPath };
+}
+
+async function getWindowsRecycleBinContents() {
+  try {
+    const sid = await getWindowsUserSid();
+    const drives = [];
+    for (let c = 67; c <= 90; c++) {
+      drives.push(String.fromCharCode(c));
+    }
+    drives.unshift("A", "B");
+
+    const contents = [];
+
+    for (const drive of drives) {
+      const rbDir = `${drive}:\\$Recycle.Bin\\${sid}`;
+      let entries;
+      try {
+        entries = await fs.readdir(rbDir);
+      } catch {
+        continue;
+      }
+
+      const iFiles = entries.filter((e) => e.startsWith("$I"));
+
+      await Promise.all(iFiles.map(async (iFile) => {
+        const iPath = path.join(rbDir, iFile);
+        const rFile = "$R" + iFile.slice(2);
+        const rPath = path.join(rbDir, rFile);
+
+        try {
+          const buf = await fs.readFile(iPath);
+          const meta = parseRecycleBinMeta(buf);
+          if (!meta || !meta.originalPath) return;
+
+          const name = path.basename(meta.originalPath);
+          let isDir = false;
+          let modified = null;
+          try {
+            const stats = await fs.stat(rPath);
+            isDir = stats.isDirectory();
+            modified = stats.mtime;
+          } catch { }
+
+          contents.push({
+            name,
+            path: rPath,
+            isDirectory: isDir,
+            isFile: !isDir,
+            isSymlink: false,
+            hidden: false,
+            size: isDir ? 0 : meta.size,
+            modified,
+            created: meta.deletedDate,
+            extension: isDir ? null : path.extname(name).toLowerCase(),
+            originalPath: meta.originalPath,
+          });
+        } catch { }
+      }));
+    }
+
+    contents.sort((a, b) => {
+      if (a.isDirectory && !b.isDirectory) return -1;
+      if (!a.isDirectory && b.isDirectory) return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+
+    return { success: true, contents, path: "shell:RecycleBinFolder" };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 ipcMain.handle("get-directory-contents", async (event, dirPath) => {
+  if (dirPath === "shell:RecycleBinFolder") {
+    return await getWindowsRecycleBinContents();
+  }
+
   try {
     const items = await fs.readdir(dirPath, { withFileTypes: true });
     const isWin = process.platform === "win32";
@@ -495,7 +607,9 @@ ipcMain.handle("get-common-directories", async () => {
 
   let trash = null;
   try {
-    if (process.platform === "darwin") {
+    if (process.platform === "win32") {
+      trash = "shell:RecycleBinFolder";
+    } else if (process.platform === "darwin") {
       trash = await existingOrNull(path.join(homePath, ".Trash"));
     } else if (process.platform === "linux") {
       trash = await existingOrNull(path.join(homePath, ".local", "share", "Trash", "files"))
@@ -672,6 +786,26 @@ ipcMain.handle("delete-item-sudo", async (event, itemPath, password) => {
     child.stdin.write(password + "\n");
     child.stdin.end();
   });
+});
+
+ipcMain.handle("empty-recycle-bin", async () => {
+  if (process.platform !== "win32") {
+    return { success: false, error: "Not supported on this platform" };
+  }
+  try {
+    const sid = await getWindowsUserSid();
+    for (let c = 65; c <= 90; c++) {
+      const rbDir = `${String.fromCharCode(c)}:\\$Recycle.Bin\\${sid}`;
+      let entries;
+      try { entries = await fs.readdir(rbDir); } catch { continue; }
+      await Promise.all(entries.filter((e) => e.startsWith("$I") || e.startsWith("$R")).map(async (e) => {
+        try { await fs.rm(path.join(rbDir, e), { recursive: true, force: true }); } catch { }
+      }));
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle("trash-item", async (event, itemPath) => {
@@ -1174,71 +1308,54 @@ async function handleArchiveBrowsing(fullPath) {
 
   if (!found) return { success: false, error: "Path not found" };
 
+  const archiveExts = /\.(zip|tar|gz|bz2|xz|7z|rar|tgz|txz|tbz2|cab|iso|lz|lzma|zst)$/i;
+  if (!archiveExts.test(archivePath)) {
+    return { success: false, error: "Not a directory" };
+  }
+
   const { exec } = require("child_process");
   const util = require("util");
   const execPromise = util.promisify(exec);
+  const normalizedInternal = internalPath.replace(/\\/g, "/");
 
-  let cmd = "";
   try {
+    const contents = [];
+    const seen = new Set();
+
     const safeArchivePath = archivePath.replace(/"/g, '\\"');
+    const isCompressedTar = /\.(tar\.(gz|xz|bz2)|tgz|txz|tbz2)$/i.test(archivePath);
 
-    const isCompressedTar = /\.(tar\.(gz|xz|bz2)|tgz|txz|tbz2)$/i.test(
-      archivePath,
-    );
-
-    cmd = `7z l -slt -ba -sccUTF-8 "${safeArchivePath}"`;
+    const q7z = `"${path7za}"`;
+    let cmd = `${q7z} l -slt -ba -sccUTF-8 "${safeArchivePath}"`;
     if (isCompressedTar) {
-      cmd = `7z x -so "${safeArchivePath}" | 7z l -slt -ba -sccUTF-8 -si -ttar`;
+      cmd = `${q7z} x -so "${safeArchivePath}" | ${q7z} l -slt -ba -sccUTF-8 -si -ttar`;
     }
 
     const { stdout } = await execPromise(cmd, { maxBuffer: 10 * 1024 * 1024 });
 
-    const contents = [];
-    const seen = new Set();
-
-    const normalizedInternal = internalPath.replace(/\\/g, "/");
-
     const blocks = stdout.split(/\r?\n\r?\n/);
-
     for (const block of blocks) {
       const entry = {};
       block.split(/\r?\n/).forEach((line) => {
         const match = line.match(/^(\w+)\s=\s(.*)$/);
         if (match) entry[match[1]] = match[2];
       });
-
       if (!entry.Path) continue;
-
-      let entryPath = entry.Path.replace(/\\/g, "/");
-
-      if (normalizedInternal && !entryPath.startsWith(normalizedInternal + "/"))
-        continue;
-
-      let relative = normalizedInternal
-        ? entryPath.slice(normalizedInternal.length + 1)
-        : entryPath;
+      const entryPath = entry.Path.replace(/\\/g, "/");
+      if (normalizedInternal && !entryPath.startsWith(normalizedInternal + "/")) continue;
+      const relative = normalizedInternal ? entryPath.slice(normalizedInternal.length + 1) : entryPath;
       if (!relative) continue;
-
       const parts = relative.split("/");
       const name = parts[0];
-
       if (seen.has(name)) continue;
       seen.add(name);
-
-      const isDirectChild = parts.length === 1;
-      const isDir =
-        !isDirectChild || (entry.Attributes && entry.Attributes.includes("D"));
-
+      const isDir = parts.length > 1 || (entry.Attributes && entry.Attributes.includes("D"));
       contents.push({
-        name: name,
-        path: path.join(fullPath, name),
-        isDirectory: isDir,
-        isFile: !isDir,
-        isSymlink: false,
+        name, path: path.join(fullPath, name), isDirectory: isDir, isFile: !isDir,
+        isSymlink: false, hidden: name.startsWith("."),
         size: isDir ? 0 : parseInt(entry.Size || "0", 10),
         modified: entry.Modified ? new Date(entry.Modified) : null,
-        created: null,
-        extension: isDir ? null : path.extname(name).toLowerCase(),
+        created: null, extension: isDir ? null : path.extname(name).toLowerCase(),
       });
     }
 
@@ -1250,18 +1367,16 @@ async function handleArchiveBrowsing(fullPath) {
 
     return { success: true, contents, path: fullPath, isArchive: true };
   } catch (err) {
-    logCommandFailure(cmd, err);
     return {
       success: false,
-      error: "Failed to read archive (7z required): " + err.message,
+      error: err.message || "Failed to read archive",
     };
   }
 }
 
 ipcMain.handle("extract-archive", async (event, archivePath, destPath) => {
-  const { exec } = require("child_process");
   const { promisify } = require("util");
-  const execAsync = promisify(exec);
+  const execAsync = promisify(execFile);
 
   try {
     const baseName = path.basename(archivePath);
@@ -1273,37 +1388,12 @@ ipcMain.handle("extract-archive", async (event, archivePath, destPath) => {
         .replace(/\.tar$/i, ""),
     );
 
-    const lower = archivePath.toLowerCase();
-
     try {
       await fs.mkdir(outputDir, { recursive: true });
-
-      if (lower.endsWith(".zip")) {
-        try {
-          await execAsync(`unzip -o "${archivePath}" -d "${outputDir}"`);
-        } catch {
-          await execAsync(`7z x "${archivePath}" -o"${outputDir}" -y`);
-        }
-      } else if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
-        await execAsync(`tar -xzf "${archivePath}" -C "${outputDir}"`);
-      } else if (lower.endsWith(".tar.bz2")) {
-        await execAsync(`tar -xjf "${archivePath}" -C "${outputDir}"`);
-      } else if (lower.endsWith(".tar.xz")) {
-        await execAsync(`tar -xJf "${archivePath}" -C "${outputDir}"`);
-      } else if (lower.endsWith(".tar")) {
-        await execAsync(`tar -xf "${archivePath}" -C "${outputDir}"`);
-      } else if (lower.endsWith(".gz")) {
-        await execAsync(
-          `gunzip -c "${archivePath}" > "${path.join(outputDir, baseName.replace(/\.gz$/i, ""))}"`,
-          { shell: true },
-        );
-      } else {
-        await execAsync(`7z x "${archivePath}" -o"${outputDir}" -y`);
-      }
-
+      await execAsync(path7za, ["x", archivePath, `-o${outputDir}`, "-y"]);
       return { success: true, outputDir };
     } catch (cmdError) {
-      return { success: false, error: cmdError.message || "Extraction failed" };
+      return { success: false, error: cmdError.message || cmdError.stderr || "Extraction failed" };
     }
   } catch (error) {
     return { success: false, error: error.message };
@@ -1311,58 +1401,17 @@ ipcMain.handle("extract-archive", async (event, archivePath, destPath) => {
 });
 
 ipcMain.handle("compress-items", async (event, paths, outputPath) => {
-  const { exec } = require("child_process");
   const { promisify } = require("util");
-  const execAsync = promisify(exec);
+  const execAsync = promisify(execFile);
 
   try {
-    const lower = outputPath.toLowerCase();
-    const items = paths.map((p) => `"${p}"`).join(" ");
-    const baseNames = paths
-      .map((p) => `"${path.basename(p)}"`)
-      .join(" ");
-    const parentDir = path.dirname(paths[0]);
-
     try {
-      if (lower.endsWith(".zip")) {
-        await execAsync(
-          `cd "${parentDir}" && zip -r "${outputPath}" ${baseNames}`,
-          { shell: true },
-        );
-      } else if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
-        await execAsync(
-          `tar -czf "${outputPath}" -C "${parentDir}" ${baseNames}`,
-          { shell: true },
-        );
-      } else if (lower.endsWith(".tar.bz2")) {
-        await execAsync(
-          `tar -cjf "${outputPath}" -C "${parentDir}" ${baseNames}`,
-          { shell: true },
-        );
-      } else if (lower.endsWith(".tar.xz")) {
-        await execAsync(
-          `tar -cJf "${outputPath}" -C "${parentDir}" ${baseNames}`,
-          { shell: true },
-        );
-      } else if (lower.endsWith(".tar")) {
-        await execAsync(
-          `tar -cf "${outputPath}" -C "${parentDir}" ${baseNames}`,
-          { shell: true },
-        );
-      } else if (lower.endsWith(".7z")) {
-        await execAsync(`7z a "${outputPath}" ${items}`, { shell: true });
-      } else {
-        await execAsync(
-          `cd "${parentDir}" && zip -r "${outputPath}" ${baseNames}`,
-          { shell: true },
-        );
-      }
-
+      await execAsync(path7za, ["a", outputPath, ...paths]);
       return { success: true };
     } catch (cmdError) {
       return {
         success: false,
-        error: cmdError.message || "Compression failed",
+        error: cmdError.message || cmdError.stderr || "Compression failed",
       };
     }
   } catch (error) {

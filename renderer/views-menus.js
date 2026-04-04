@@ -157,7 +157,7 @@ function renderViewMenu(type) {
         ),
       );
       viewMenu.appendChild(
-        createOption("Date Added", visibleColumns.added, () =>
+        createOption(isInTrash ? "Date Deleted" : "Date Added", visibleColumns.added, () =>
           toggleColumn("added"),
         ),
       );
@@ -203,7 +203,7 @@ function renderViewMenu(type) {
       ),
     );
     viewMenu.appendChild(
-      createOption("Date Added", sortBy === "added", () => updateSort("added")),
+      createOption(isInTrash ? "Date Deleted" : "Date Added", sortBy === "added", () => updateSort("added")),
     );
     viewMenu.appendChild(
       createOption("Size", sortBy === "size", () => updateSort("size")),

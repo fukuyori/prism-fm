@@ -183,8 +183,10 @@ function getItemSortSize(item) {
 }
 
 function compareItems(a, b) {
-  if (a.isDirectory && !b.isDirectory) return -1;
-  if (!a.isDirectory && b.isDirectory) return 1;
+  if (sortBy !== "date" && sortBy !== "added") {
+    if (a.isDirectory && !b.isDirectory) return -1;
+    if (!a.isDirectory && b.isDirectory) return 1;
+  }
 
   let comparison = 0;
   switch (sortBy) {

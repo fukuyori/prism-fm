@@ -1,6 +1,6 @@
 {
   "name": "prism-fm",
-  "version": "1.0.0-spumoni.3.1",
+  "version": "1.0.0-spumoni.3.2",
   "description": "A modern, transparent file manager for Linux with glassmorphism UI",
   "main": "main.js",
   "scripts": {
@@ -53,6 +53,7 @@
     "electron-builder": "^24.13.3"
   },
   "dependencies": {
+    "7zip-bin": "^5.2.0",
     "dbus-next": "^0.10.2",
     "image-size": "^2.0.2"
   },
@@ -60,6 +61,9 @@
     "appId": "com.compiledkernelidk.prismfm",
     "productName": "prism-fm",
     "artifactName": "prism-fm-${version}-${arch}.${ext}",
+    "asarUnpack": [
+      "node_modules/7zip-bin/**/*"
+    ],
     "files": [
       "main.js",
       "icon.png",
