@@ -640,6 +640,15 @@ function setupScrollLoadObserver() {
           sentinel.remove();
         }
 
+        if (viewMode === "thumbnail" && thumbnailObserver) {
+          fileList.querySelectorAll("[data-thumb-path]").forEach((el) => {
+            if (!el._thumbObserved) {
+              el._thumbObserved = true;
+              thumbnailObserver.observe(el);
+            }
+          });
+        }
+
         isLoadingMore = false;
       }
     },
@@ -728,6 +737,7 @@ function renderFiles(options = {}) {
   previousSelectedPaths = new Set(selectedItems);
   updateGroupHeaderStacking();
   document.dispatchEvent(new Event("prism:columns-updated"));
+  setupThumbnailObserver();
 }
 
 function renderCurrentView() {

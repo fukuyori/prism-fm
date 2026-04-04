@@ -11,7 +11,7 @@ if (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland') {
 }
 
 // Disable sandbox for packaged builds (AppImage cannot set SUID on chrome-sandbox)
-if (!process.argv.includes('--no-sandbox')) {
+if (process.platform === 'linux' && !process.argv.includes('--no-sandbox')) {
   process.argv.push('--no-sandbox');
 }
 
@@ -24,6 +24,8 @@ const {
   Menu,
   clipboard,
   globalShortcut,
+  protocol,
+  net,
 } = require("electron");
 const path = require("path");
 const fs = require("fs").promises;
@@ -226,11 +228,12 @@ function createWindow() {
     minWidth: 360,
     minHeight: 300,
     transparent: true,
-    vibrancy: "under-window",
-    visualEffectState: "active",
     backgroundColor: "#00000000",
     ...(process.platform === "darwin"
-      ? { titleBarStyle: "hidden", trafficLightPosition: { x: 10, y: 10 } }
+      ? {
+          titleBarStyle: "hidden",
+          trafficLightPosition: { x: 10, y: 10 },
+        }
       : { frame: false }),
     icon: path.join(__dirname, "icon.png"),
     webPreferences: {
@@ -301,7 +304,16 @@ function createWindow() {
   });
 }
 
+protocol.registerSchemesAsPrivileged([
+  { scheme: "thumb", privileges: { bypassCSP: true, supportFetchAPI: true } },
+]);
+
 app.whenReady().then(() => {
+  protocol.handle("thumb", (request) => {
+    const filePath = decodeURIComponent(request.url.replace("thumb://", ""));
+    return net.fetch("file://" + encodeURI(filePath).replace(/#/g, "%23"));
+  });
+
   isDev = process.env.PRISM_DEVTOOLS === "1";
   createWindow();
 
@@ -311,14 +323,13 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  app.quit();
 });
 
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+app.on("before-quit", () => {
+  if (mainWindow) {
+    mainWindow.removeAllListeners("close");
+    mainWindow.close();
   }
 });
 

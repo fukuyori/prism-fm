@@ -10,6 +10,12 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
+### v1.0.0-spumoni.3.3
+
+- macOS transparency fix, process exit fix
+- Four view modes: Detailed, List, Grid, Thumbnail (with image preview)
+- Global default view mode setting, compact row heights
+
 ### v1.0.0-spumoni.3.2
 
 - Windows Recycle Bin browsing via native `$I` file parsing (no PowerShell)

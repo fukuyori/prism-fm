@@ -1003,9 +1003,9 @@ body.platform-win32 .window-controls {
     display: grid;
     grid-template-columns: var(--col-icon) 1fr var(--col-size) var(--col-modified) var(--col-added);
     align-items: center;
-    padding: 8px;
-    margin-bottom: 2px;
-    border-radius: 8px;
+    padding: 4px 8px;
+    margin-bottom: 1px;
+    border-radius: 6px;
     cursor: pointer;
     background: var(--file-row-bg);
     transition: background 0.15s;
@@ -1111,6 +1111,35 @@ body.platform-win32 .window-controls {
 }
 
 
+/* List view: compact single-line, no size/date/added columns */
+.file-list.list-view .file-item {
+    grid-template-columns: var(--col-icon) 1fr;
+    padding: 2px 8px;
+    margin-bottom: 0;
+    border-radius: 4px;
+}
+
+.file-list.list-view .file-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.file-list.list-view .file-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.file-list.list-view .file-name {
+    font-size: 13px;
+}
+
+.file-list.list-view .file-size,
+.file-list.list-view .file-date,
+.file-list.list-view .file-added {
+    display: none;
+}
+
+/* Grid view: icon + name cards */
 .file-list.grid-view {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
@@ -1156,6 +1185,64 @@ body.platform-win32 .window-controls {
 }
 
 .file-list.grid-view .group-header {
+    grid-column: 1 / -1;
+}
+
+/* Thumbnail view: image thumbnails in a grid */
+.file-list.thumbnail-view {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--thumbnail-size, 140px), 1fr));
+    gap: 10px;
+    align-content: start;
+}
+
+.file-list.thumbnail-view .file-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 8px;
+}
+
+.file-list.thumbnail-view .file-icon {
+    width: var(--thumbnail-size, 140px);
+    height: var(--thumbnail-size, 140px);
+    margin-bottom: 6px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.file-list.thumbnail-view .file-icon svg {
+    width: 48px;
+    height: 48px;
+}
+
+.file-list.thumbnail-view .file-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+.file-list.thumbnail-view .file-name {
+    padding-right: 0;
+    white-space: normal;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 12px;
+    max-width: var(--thumbnail-size, 140px);
+}
+
+.file-list.thumbnail-view .file-size,
+.file-list.thumbnail-view .file-date,
+.file-list.thumbnail-view .file-added {
+    display: none;
+}
+
+.file-list.thumbnail-view .group-header {
     grid-column: 1 / -1;
 }
 
