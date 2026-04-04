@@ -295,7 +295,7 @@ function renderPinnedItems() {
       await navigateTo(targetPath);
     });
 
-    row.addEventListener("contextmenu", (e) => {
+    const openQuickAccessContextMenu = (e) => {
       e.preventDefault();
       e.stopPropagation();
       contextMenuMode = "quickAccess";
@@ -304,6 +304,12 @@ function renderPinnedItems() {
       contextQuickAccessId = qa.id;
       renderContextMenu();
       showContextMenu(e.clientX, e.clientY);
+    };
+
+    row.addEventListener("contextmenu", openQuickAccessContextMenu);
+    row.addEventListener("mouseup", (e) => {
+      if (e.button !== 2) return;
+      openQuickAccessContextMenu(e);
     });
 
     if (isQuickAccessExactActive(qa)) row.classList.add("active");
@@ -563,10 +569,16 @@ function createDriveRow(drive) {
     }
   });
 
-  row.addEventListener("contextmenu", (e) => {
+  const openDriveMenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
     showDriveContextMenu(e, drive);
+  };
+
+  row.addEventListener("contextmenu", openDriveMenu);
+  row.addEventListener("mouseup", (e) => {
+    if (e.button !== 2) return;
+    openDriveMenu(e);
   });
 
   attachDriveDragDropHandlers(row, drive);
@@ -707,4 +719,3 @@ function syncTagsHighlight() {
     }
   });
 }
-

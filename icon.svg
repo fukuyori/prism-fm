@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#141828"/>
+      <stop offset="100%" stop-color="#080a14"/>
+    </radialGradient>
+
+    <linearGradient id="prism-face" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#8895cc"/>
+      <stop offset="100%" stop-color="#5a6599"/>
+    </linearGradient>
+
+    <linearGradient id="light-in" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="1"/>
+    </linearGradient>
+
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <clipPath id="clip">
+      <circle cx="256" cy="256" r="248"/>
+    </clipPath>
+
+    <clipPath id="prism-clip">
+      <polygon points="256,90 120,380 392,380"/>
+    </clipPath>
+  </defs>
+
+  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
+
+  <g clip-path="url(#clip)">
+    <g filter="url(#glow)">
+      <line x1="0" y1="200" x2="190" y2="240" stroke="#ffffff" stroke-width="4" opacity="0.9"/>
+    </g>
+
+    <g clip-path="url(#prism-clip)" opacity="0.6">
+      <line x1="190" y1="240" x2="340" y2="260" stroke="#ff3333" stroke-width="2"/> <line x1="190" y1="240" x2="335" y2="280" stroke="#ffcc00" stroke-width="2"/> <line x1="190" y1="240" x2="330" y2="300" stroke="#33dd77" stroke-width="2"/> <line x1="190" y1="240" x2="325" y2="325" stroke="#5555ff" stroke-width="2"/> <line x1="190" y1="240" x2="320" y2="345" stroke="#bb33ff" stroke-width="2"/> </g>
+
+    <g filter="url(#glow)">
+      <polygon points="340,260 512,270 512,290" fill="#ff3333" opacity="0.8"/>
+      <polygon points="335,280 512,310 512,335" fill="#ffcc00" opacity="0.8"/>
+      <polygon points="330,300 512,360 512,390" fill="#33dd77" opacity="0.8"/>
+      <polygon points="325,325 512,420 512,455" fill="#33bbff" opacity="0.8"/>
+      <polygon points="320,345 512,490 512,530" fill="#bb33ff" opacity="0.8"/>
+    </g>
+
+    <polygon points="256,90 120,380 392,380" fill="url(#prism-face)" opacity="0.4"/>
+    <polygon points="256,90 120,380 392,380" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.3"/>
+
+    <polygon points="256,90 190,240 256,220" fill="#ffffff" opacity="0.1"/>
+  </g>
+
+  <circle cx="256" cy="256" r="252" fill="none" stroke="#5566aa" stroke-width="1" opacity="0.2"/>
+</svg>

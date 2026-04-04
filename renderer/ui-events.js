@@ -42,12 +42,16 @@ function setupSidebarToggle() {
 
 function setupSearchInput() {
   if (!searchInput) return;
+  let searchTimer = null;
   searchInput.addEventListener("input", () => {
-    if (splitViewEnabled && !pickerMode) {
-      renderAllPanes();
-    } else {
-      renderFiles();
-    }
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      if (splitViewEnabled && !pickerMode) {
+        renderAllPanes();
+      } else {
+        renderFiles();
+      }
+    }, 150);
   });
 }
 
@@ -195,9 +199,9 @@ function setupGlobalClickHandlers() {
       }
     }
 
-    if (opsPanelVisible && opsPanel) {
+    if (opsPanel && opsPanel.style.display === "flex") {
       if (!opsPanel.contains(target) && target !== opsToggleBtn) {
-        setOpsPanelVisible(false);
+        opsPanel.style.display = "none";
       }
     }
   };
@@ -210,13 +214,6 @@ function setupGlobalClickHandlers() {
     true,
   );
 
-  document.addEventListener(
-    "contextmenu",
-    (e) => {
-      closeMenusForTarget(e.target);
-    },
-    true,
-  );
 }
 
 function setupThemeCustomizer() {
@@ -233,7 +230,7 @@ function setupThemeCustomizer() {
   }
 
   if (themeSaveBtn) {
-    themeSaveBtn.addEventListener("click", closeThemeCustomizer);
+    themeSaveBtn.addEventListener("click", saveThemeCustomizer);
   }
 
   if (themeResetBtn) {
@@ -255,53 +252,67 @@ function setupContextMenuHandlers() {
     });
   }
 
-  const attachContextMenu = (listEl, paneId) => {
-    if (!listEl) return;
-    listEl.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      if (paneId && paneId !== activePaneId) {
-        setActivePane(paneId, { skipRender: true });
-      }
+  const openListContextMenu = (e, listEl, paneId) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-      contextPinTargetPath = null;
-      contextPinTargetLabel = null;
+    if (paneId && paneId !== activePaneId) {
+      setActivePane(paneId, { skipRender: true });
+    }
 
-      const candidate = e.target.closest(".file-item");
-      const fileItem =
-        candidate && listEl.contains(candidate) ? candidate : null;
+    contextPinTargetPath = null;
+    contextPinTargetLabel = null;
 
-      if (fileItem) {
-        contextMenuMode = "item";
-        if (!selectedItems.has(fileItem.dataset.path)) {
-          selectedItems.clear();
-          selectedItems.add(fileItem.dataset.path);
-          updateSelectionUI();
-        }
+    const candidate = e.target.closest(".file-item");
+    const fileItem =
+      candidate && listEl.contains(candidate) ? candidate : null;
 
-        if (selectedItems.size === 1) {
-          const p = Array.from(selectedItems)[0];
-          const it = currentItems.find((x) => x.path === p);
-          if (it && it.isDirectory) {
-            contextPinTargetPath = it.path;
-            contextPinTargetLabel = it.name;
-          }
-        }
-      } else {
-        contextMenuMode = "background";
+    if (fileItem) {
+      contextMenuMode = "item";
+      if (!selectedItems.has(fileItem.dataset.path)) {
         selectedItems.clear();
+        selectedItems.add(fileItem.dataset.path);
         updateSelectionUI();
-
-        contextPinTargetPath = currentPath;
-        contextPinTargetLabel = "Pinned";
       }
 
-      renderContextMenu();
-      showContextMenu(e.clientX, e.clientY);
-    });
+      if (selectedItems.size === 1) {
+        const p = Array.from(selectedItems)[0];
+        const it = currentItems.find((x) => x.path === p);
+        if (it && it.isDirectory) {
+          contextPinTargetPath = it.path;
+          contextPinTargetLabel = it.name;
+        }
+      }
+    } else {
+      contextMenuMode = "background";
+      selectedItems.clear();
+      updateSelectionUI();
+
+      contextPinTargetPath = currentPath;
+      contextPinTargetLabel = "Pinned";
+    }
+
+    renderContextMenu();
+    showContextMenu(e.clientX, e.clientY);
   };
 
-  attachContextMenu(fileListLeft, "left");
-  attachContextMenu(fileListRight, "right");
+  // Use document-level listener to catch right-clicks on file lists,
+  // because container-level listeners may not fire reliably on all platforms.
+  document.addEventListener("mouseup", (e) => {
+    if (e.button !== 2) return;
+    const listEl = e.target.closest(".file-list");
+    if (!listEl) return;
+    const paneId = listEl.dataset.pane;
+    openListContextMenu(e, listEl, paneId);
+  });
+
+  document.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const listEl = e.target.closest(".file-list");
+    if (!listEl) return;
+    const paneId = listEl.dataset.pane;
+    openListContextMenu(e, listEl, paneId);
+  });
 }
 
 function setupFileListHandlers() {
@@ -397,11 +408,16 @@ function setupFileListHandlers() {
       }
     });
 
+    let scrollRafId = null;
     listEl.addEventListener("scroll", () => {
-      updateGroupHeaderStacking(listEl);
-      const pane = panes[paneId];
-      if (pane) pane.scrollTop = listEl.scrollTop;
-    });
+      if (scrollRafId) return;
+      scrollRafId = requestAnimationFrame(() => {
+        scrollRafId = null;
+        updateGroupHeaderStacking(listEl);
+        const pane = panes[paneId];
+        if (pane) pane.scrollTop = listEl.scrollTop;
+      });
+    }, { passive: true });
   };
 
   attachHandlers(fileListLeft, "left");

@@ -1,16 +1,19 @@
 {
   "name": "prism-fm",
-  "version": "1.0.0",
+  "version": "1.0.0-spumoni.1",
   "description": "A modern, transparent file manager for Linux with glassmorphism UI",
   "main": "main.js",
   "scripts": {
     "start": "./scripts/run-electron.sh",
     "dev": "PRISM_DEVTOOLS=1 ./scripts/run-electron.sh --enable-logging",
-    "portal": "node portal-service.js"
+    "portal": "node portal-service.js",
+    "build": "electron-builder --linux",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/compiledkernel-idk/prism-fm.git"
+    "url": "https://github.com/fukuyori/prism-fm.git"
   },
   "keywords": [
     "file-manager",
@@ -23,7 +26,10 @@
     "xdg-portal",
     "file-picker"
   ],
-  "author": "tomiwaf",
+  "author": {
+    "name": "tomiwaf",
+    "email": "self@spumoni.org"
+  },
   "license": "GPL-3.0",
   "bugs": {
     "url": "https://github.com/compiledkernel-idk/prism-fm/issues"
@@ -33,10 +39,79 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "electron": "^28.0.0"
+    "electron": "^28.0.0",
+    "electron-builder": "^24.13.3"
   },
   "dependencies": {
     "dbus-next": "^0.10.2",
     "image-size": "^2.0.2"
+  },
+  "build": {
+    "appId": "com.compiledkernelidk.prismfm",
+    "productName": "Prism FM",
+    "artifactName": "prism-fm-${version}-${arch}.${ext}",
+    "files": [
+      "main.js",
+      "icon.png",
+      "preload.js",
+      "picker-early.js",
+      "index.html",
+      "styles.css",
+      "renderer.js",
+      "tauri-adapter.js",
+      "portal-service.js",
+      "zenity-wrapper.sh",
+      "renderer/**/*",
+      "scripts/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "System;FileManager;Utility",
+      "icon": "icon.png",
+      "executableName": "prism-fm"
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ],
+      "packageCategory": "utils",
+      "priority": "optional"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.utilities"
+    }
   }
 }

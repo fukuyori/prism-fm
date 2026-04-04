@@ -98,35 +98,53 @@ function folderSizeSpinnerHtml() {
   return "—";
 }
 
+function getUiLocales() {
+  if (Array.isArray(navigator.languages) && navigator.languages.length > 0) {
+    return navigator.languages;
+  }
+  if (navigator.language) return [navigator.language];
+  return undefined;
+}
+
+function getDateLabel(key) {
+  const primaryLocale = (getUiLocales() && getUiLocales()[0]) || "";
+  const isJapanese = primaryLocale.toLowerCase().startsWith("ja");
+  const labels = isJapanese
+    ? {
+      today: "今日",
+      yesterday: "昨日",
+      thisWeek: "今週",
+      thisMonth: "今月",
+      thisYear: "今年",
+      older: "それ以前",
+      unknown: "不明",
+    }
+    : {
+      today: "Today",
+      yesterday: "Yesterday",
+      thisWeek: "This Week",
+      thisMonth: "This Month",
+      thisYear: "This Year",
+      older: "Older",
+      unknown: "Unknown",
+    };
+  return labels[key] || key;
+}
+
 function formatDate(date) {
   if (!date) return "—";
   const d = new Date(date);
-  const now = new Date();
-
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dateDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round((today - dateDay) / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) {
-    return (
-      "Today, " +
-      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    );
-  } else if (diffDays === 1) {
-    return "Yesterday";
-  } else if (diffDays < 7) {
-    return d.toLocaleDateString([], { weekday: "long" });
-  } else {
-    return d.toLocaleDateString([], {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}/${mm}/${dd} ${hh}:${min}:${ss}`;
 }
 
 function resetFileListView() {
-  fileList.innerHTML = "";
+  fileList.textContent = "";
   fileList.className = `file-list ${viewMode}-view`;
 
   const container = fileList.closest(".file-list-container");
@@ -196,18 +214,18 @@ function compareItems(a, b) {
 }
 
 function getDateGroupLabel(dateValue) {
-  if (!dateValue) return "Unknown";
+  if (!dateValue) return getDateLabel("unknown");
   const d = new Date(dateValue);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dateDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const diffDays = Math.round((today - dateDay) / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return "This Week";
-  if (diffDays < 30) return "This Month";
-  if (diffDays < 365) return "This Year";
-  return "Older";
+  if (diffDays === 0) return getDateLabel("today");
+  if (diffDays === 1) return getDateLabel("yesterday");
+  if (diffDays < 7) return getDateLabel("thisWeek");
+  if (diffDays < 30) return getDateLabel("thisMonth");
+  if (diffDays < 365) return getDateLabel("thisYear");
+  return getDateLabel("older");
 }
 
 function getGroupKey(item) {
@@ -504,13 +522,13 @@ function sortGroups(groups) {
     });
   } else if (groupBy === "dateModified" || groupBy === "dateAdded") {
     const dateGroupOrder = [
-      "Today",
-      "Yesterday",
-      "This Week",
-      "This Month",
-      "This Year",
-      "Older",
-      "Unknown",
+      getDateLabel("today"),
+      getDateLabel("yesterday"),
+      getDateLabel("thisWeek"),
+      getDateLabel("thisMonth"),
+      getDateLabel("thisYear"),
+      getDateLabel("older"),
+      getDateLabel("unknown"),
     ];
 
     sortedGroups.sort((a, b) => {
@@ -605,6 +623,42 @@ function renderGroupedItems(groups, fragment) {
   }
 }
 
+function setupScrollLoadObserver() {
+  if (scrollLoadObserver) scrollLoadObserver.disconnect();
+
+  scrollLoadObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting || isLoadingMore) continue;
+        if (renderedItemCount >= filteredItems.length) continue;
+
+        isLoadingMore = true;
+        const chunk = document.createDocumentFragment();
+        const end = Math.min(
+          renderedItemCount + ITEMS_PER_CHUNK,
+          filteredItems.length,
+        );
+
+        for (let i = renderedItemCount; i < end; i++) {
+          chunk.appendChild(renderItemForVirtualScroll(filteredItems[i]));
+        }
+        renderedItemCount = end;
+
+        const sentinel = fileList.querySelector(".load-more-sentinel");
+        if (sentinel) fileList.insertBefore(chunk, sentinel);
+
+        if (renderedItemCount >= filteredItems.length && sentinel) {
+          scrollLoadObserver.unobserve(sentinel);
+          sentinel.remove();
+        }
+
+        isLoadingMore = false;
+      }
+    },
+    { root: fileList, rootMargin: "200px" },
+  );
+}
+
 function renderChunkedItems(items, fragment) {
   filteredItems = items;
   renderItemForVirtualScroll = renderFileItem;
@@ -683,6 +737,7 @@ function renderFiles(options = {}) {
   if (!options.skipFolderSizes) {
     scheduleVisibleFolderSizes();
   }
+  previousSelectedPaths = new Set(selectedItems);
   updateGroupHeaderStacking();
   document.dispatchEvent(new Event("prism:columns-updated"));
 }
@@ -744,15 +799,34 @@ function handleItemClick(e, item) {
   updateSelectionUI();
 }
 
+var previousSelectedPaths = new Set();
+
 function updateSelectionUI() {
   const pane = panes[activePaneId];
   const listEl = pane?.fileListEl || fileList;
   const selectedSet = pane?.selectedItems || selectedItems;
+
   if (listEl) {
-    listEl.querySelectorAll(".file-item").forEach((el) => {
-      el.classList.toggle("selected", selectedSet.has(el.dataset.path));
-    });
+    // Only update elements that changed
+    for (const path of selectedSet) {
+      if (!previousSelectedPaths.has(path)) {
+        const el = listEl.querySelector(
+          `.file-item[data-path="${CSS.escape(path)}"]`,
+        );
+        if (el) el.classList.add("selected");
+      }
+    }
+    for (const path of previousSelectedPaths) {
+      if (!selectedSet.has(path)) {
+        const el = listEl.querySelector(
+          `.file-item[data-path="${CSS.escape(path)}"]`,
+        );
+        if (el) el.classList.remove("selected");
+      }
+    }
+    previousSelectedPaths = new Set(selectedSet);
   }
+
   updateStatusBar();
   updatePreviewPanelContent();
 }

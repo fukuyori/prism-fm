@@ -1226,8 +1226,11 @@ async function handleArchiveBrowsing(fullPath) {
 }
 
 ipcMain.handle("extract-archive", async (event, archivePath, destPath) => {
+  const { exec } = require("child_process");
+  const { promisify } = require("util");
+  const execAsync = promisify(exec);
+
   try {
-    const { execSync } = require("child_process");
     const baseName = path.basename(archivePath);
 
     let outputDir = path.join(
@@ -1244,39 +1247,25 @@ ipcMain.handle("extract-archive", async (event, archivePath, destPath) => {
 
       if (lower.endsWith(".zip")) {
         try {
-          execSync(`unzip -o "${archivePath}" -d "${outputDir}"`, {
-            stdio: "pipe",
-          });
+          await execAsync(`unzip -o "${archivePath}" -d "${outputDir}"`);
         } catch {
-          execSync(`7z x "${archivePath}" -o"${outputDir}" -y`, {
-            stdio: "pipe",
-          });
+          await execAsync(`7z x "${archivePath}" -o"${outputDir}" -y`);
         }
       } else if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
-        execSync(`tar -xzf "${archivePath}" -C "${outputDir}"`, {
-          stdio: "pipe",
-        });
+        await execAsync(`tar -xzf "${archivePath}" -C "${outputDir}"`);
       } else if (lower.endsWith(".tar.bz2")) {
-        execSync(`tar -xjf "${archivePath}" -C "${outputDir}"`, {
-          stdio: "pipe",
-        });
+        await execAsync(`tar -xjf "${archivePath}" -C "${outputDir}"`);
       } else if (lower.endsWith(".tar.xz")) {
-        execSync(`tar -xJf "${archivePath}" -C "${outputDir}"`, {
-          stdio: "pipe",
-        });
+        await execAsync(`tar -xJf "${archivePath}" -C "${outputDir}"`);
       } else if (lower.endsWith(".tar")) {
-        execSync(`tar -xf "${archivePath}" -C "${outputDir}"`, {
-          stdio: "pipe",
-        });
+        await execAsync(`tar -xf "${archivePath}" -C "${outputDir}"`);
       } else if (lower.endsWith(".gz")) {
-        execSync(
+        await execAsync(
           `gunzip -c "${archivePath}" > "${path.join(outputDir, baseName.replace(/\.gz$/i, ""))}"`,
-          { stdio: "pipe", shell: true },
+          { shell: true },
         );
       } else {
-        execSync(`7z x "${archivePath}" -o"${outputDir}" -y`, {
-          stdio: "pipe",
-        });
+        await execAsync(`7z x "${archivePath}" -o"${outputDir}" -y`);
       }
 
       return { success: true, outputDir };
@@ -1289,49 +1278,50 @@ ipcMain.handle("extract-archive", async (event, archivePath, destPath) => {
 });
 
 ipcMain.handle("compress-items", async (event, paths, outputPath) => {
-  try {
-    const { execSync } = require("child_process");
-    const lower = outputPath.toLowerCase();
+  const { exec } = require("child_process");
+  const { promisify } = require("util");
+  const execAsync = promisify(exec);
 
+  try {
+    const lower = outputPath.toLowerCase();
     const items = paths.map((p) => `"${p}"`).join(" ");
+    const baseNames = paths
+      .map((p) => `"${path.basename(p)}"`)
+      .join(" ");
+    const parentDir = path.dirname(paths[0]);
 
     try {
       if (lower.endsWith(".zip")) {
-        const baseNames = paths.map((p) => path.basename(p)).join(" ");
-        const parentDir = path.dirname(paths[0]);
-        execSync(
-          `cd "${parentDir}" && zip -r "${outputPath}" ${paths.map((p) => `"${path.basename(p)}"`).join(" ")}`,
-          { stdio: "pipe", shell: true },
+        await execAsync(
+          `cd "${parentDir}" && zip -r "${outputPath}" ${baseNames}`,
+          { shell: true },
         );
       } else if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
-        execSync(
-          `tar -czf "${outputPath}" -C "${path.dirname(paths[0])}" ${paths.map((p) => `"${path.basename(p)}"`).join(" ")}`,
-          { stdio: "pipe", shell: true },
+        await execAsync(
+          `tar -czf "${outputPath}" -C "${parentDir}" ${baseNames}`,
+          { shell: true },
         );
       } else if (lower.endsWith(".tar.bz2")) {
-        execSync(
-          `tar -cjf "${outputPath}" -C "${path.dirname(paths[0])}" ${paths.map((p) => `"${path.basename(p)}"`).join(" ")}`,
-          { stdio: "pipe", shell: true },
+        await execAsync(
+          `tar -cjf "${outputPath}" -C "${parentDir}" ${baseNames}`,
+          { shell: true },
         );
       } else if (lower.endsWith(".tar.xz")) {
-        execSync(
-          `tar -cJf "${outputPath}" -C "${path.dirname(paths[0])}" ${paths.map((p) => `"${path.basename(p)}"`).join(" ")}`,
-          { stdio: "pipe", shell: true },
+        await execAsync(
+          `tar -cJf "${outputPath}" -C "${parentDir}" ${baseNames}`,
+          { shell: true },
         );
       } else if (lower.endsWith(".tar")) {
-        execSync(
-          `tar -cf "${outputPath}" -C "${path.dirname(paths[0])}" ${paths.map((p) => `"${path.basename(p)}"`).join(" ")}`,
-          { stdio: "pipe", shell: true },
+        await execAsync(
+          `tar -cf "${outputPath}" -C "${parentDir}" ${baseNames}`,
+          { shell: true },
         );
       } else if (lower.endsWith(".7z")) {
-        execSync(`7z a "${outputPath}" ${items}`, {
-          stdio: "pipe",
-          shell: true,
-        });
+        await execAsync(`7z a "${outputPath}" ${items}`, { shell: true });
       } else {
-        execSync(
-          `cd "${path.dirname(paths[0])}" && zip -r "${outputPath}" ${paths.map((p) => `"${path.basename(p)}"`).join(" ")}`,
-          { stdio: "pipe", shell: true },
+        await execAsync(
+          `cd "${parentDir}" && zip -r "${outputPath}" ${baseNames}`,
+          { shell: true },
         );
       }
 

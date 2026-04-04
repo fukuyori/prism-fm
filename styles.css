@@ -12,6 +12,9 @@
     --bg-overlay: rgba(100, 100, 100, 0.05);
     --menu-bg: rgba(30, 30, 40, 0.6);
     --menu-overlay-bg: rgba(30, 30, 40, 0.7);
+    --file-row-bg: rgba(60, 60, 80, 0.08);
+    --file-row-hover: rgba(100, 100, 100, 0.18);
+    --file-row-active: rgba(100, 100, 100, 0.32);
     --bg-hover: rgba(255, 255, 255, 0.25);
     --bg-active: rgba(100, 100, 100, 0.5);
     --modal-backdrop: rgba(0, 0, 0, 0.5);
@@ -930,15 +933,16 @@ body {
     margin-bottom: 2px;
     border-radius: 8px;
     cursor: pointer;
+    background: var(--file-row-bg);
     transition: background 0.15s;
 }
 
 .file-item:hover {
-    background: var(--bg-hover);
+    background: var(--file-row-hover);
 }
 
 .file-item.selected {
-    background: var(--bg-active);
+    background: var(--file-row-active);
 }
 
 .file-item.dragging {
@@ -1390,7 +1394,7 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 16px;
+    padding: 6px 16px;
     font-size: 13px;
     color: var(--text-primary);
     cursor: pointer;
@@ -1625,6 +1629,52 @@ body {
     border-bottom: none;
 }
 
+.theme-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.theme-preset-btn,
+.theme-chip-btn {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition:
+        transform 0.15s ease,
+        background 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.theme-preset-btn:hover,
+.theme-chip-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-color);
+    transform: translateY(-1px);
+}
+
+.theme-preset-btn {
+    text-align: left;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 92px;
+}
+
+.theme-preset-name {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.theme-preset-hint {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+
 .theme-label {
     display: flex;
     flex-direction: column;
@@ -1666,6 +1716,12 @@ body {
 .theme-select:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.theme-chip-btn {
+    padding: 8px 12px;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .theme-color-input {
@@ -1744,7 +1800,13 @@ body {
     }
 
     .theme-controls {
-        justify-content: space-between;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .theme-select {
+        min-width: 0;
+        width: 100%;
     }
 }
 
