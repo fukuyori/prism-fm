@@ -48,7 +48,7 @@
   },
   "build": {
     "appId": "com.compiledkernelidk.prismfm",
-    "productName": "Prism FM",
+    "productName": "prism-fm",
     "artifactName": "prism-fm-${version}-${arch}.${ext}",
     "files": [
       "main.js",
@@ -75,9 +75,13 @@
         "deb"
       ],
       "category": "System;FileManager;Utility",
-      "icon": "icon.png",
-      "executableName": "prism-fm"
+      "icon": "build/icons/",
+      "executableName": "prism-fm",
+      "desktop": {
+        "Name": "Prism FM"
+      }
     },
+    "afterPack": "./scripts/after-pack.js",
     "deb": {
       "depends": [
         "libgtk-3-0",

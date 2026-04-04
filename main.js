@@ -1,5 +1,20 @@
 
 
+// Ensure Electron runs as an app, not as Node.js
+delete process.env.ELECTRON_RUN_AS_NODE;
+
+// Wayland support - must be set before require("electron")
+if (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland') {
+  if (!process.env.ELECTRON_OZONE_PLATFORM_HINT) {
+    process.env.ELECTRON_OZONE_PLATFORM_HINT = 'wayland';
+  }
+}
+
+// Disable sandbox for packaged builds (AppImage cannot set SUID on chrome-sandbox)
+if (!process.argv.includes('--no-sandbox')) {
+  process.argv.push('--no-sandbox');
+}
+
 const {
   app,
   BrowserWindow,
@@ -15,7 +30,6 @@ const fs = require("fs").promises;
 const fsSync = require("fs");
 const sizeOf = require("image-size");
 const { fileURLToPath } = require("url");
-
 
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
