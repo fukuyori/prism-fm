@@ -31,6 +31,8 @@ var FOLDER_SIZE_CONCURRENCY = 3;
 var MAX_FOLDER_SIZE_CACHE_ENTRIES = 1000;
 var MAX_VIEW_SETTINGS_CACHE_ENTRIES = 50;
 var MAX_ITEMS_BEFORE_VIRTUAL_SCROLL = 500;
+var ITEMS_PER_CHUNK = 100;
+var renderItemForVirtualScroll = null;
 var FOLDER_SIZE_CACHE_TTL_MS = 300000; // 5 minutes
 
 var tabs = [];
@@ -103,6 +105,159 @@ var themeOverrides = {};
 var themeControlMap = new Map();
 var colorProbe = null;
 var themeModal = null;
+var themeDraftOverrides = {};
+var themeSavedOverridesSnapshot = {};
+var themeWalThemesCache = null;
+
+var THEME_VARIABLE_DEFAULTS = {
+  "--bg-primary": "rgba(30, 30, 40, 0.05)",
+  "--bg-secondary": "rgba(45, 45, 60, 0.05)",
+  "--bg-tertiary": "rgba(60, 60, 80, 0.05)",
+  "--bg-overlay": "rgba(100, 100, 100, 0.05)",
+  "--menu-bg": "rgba(30, 30, 40, 0.6)",
+  "--menu-overlay-bg": "rgba(30, 30, 40, 0.7)",
+  "--file-row-bg": "rgba(60, 60, 80, 0.08)",
+  "--file-row-hover": "rgba(100, 100, 100, 0.18)",
+  "--file-row-active": "rgba(100, 100, 100, 0.32)",
+  "--bg-hover": "rgba(255, 255, 255, 0.25)",
+  "--bg-active": "rgba(100, 100, 100, 0.5)",
+  "--modal-backdrop": "rgba(0, 0, 0, 0.5)",
+  "--text-primary": "rgba(255, 255, 255, 0.95)",
+  "--text-secondary": "rgba(255, 255, 255, 0.7)",
+  "--text-muted": "rgba(255, 255, 255, 0.5)",
+  "--border-color": "rgba(255, 255, 255, 0.1)",
+  "--accent-color": "rgba(100, 100, 100, 0.5)",
+  "--accent-hover": "rgba(170, 170, 170, 0.95)",
+  "--success-color": "rgba(100, 255, 150, 0.8)",
+  "--danger-color": "rgba(255, 100, 100, 0.8)",
+  "--shadow": "0 8px 32px rgba(0, 0, 0, 0.3)",
+  "--blur-amount": "20px",
+};
+
+var BUILTIN_THEME_PRESETS = [
+  {
+    id: "default",
+    name: "Default Glass",
+    description: "The current frosted dark look.",
+    overrides: {},
+  },
+  {
+    id: "nord-frost",
+    name: "Nord Frost",
+    description: "Cool blue glass with crisp contrast.",
+    overrides: {
+      "--bg-primary": "rgba(26, 33, 44, 0.16)",
+      "--bg-secondary": "rgba(35, 45, 60, 0.22)",
+      "--bg-tertiary": "rgba(49, 62, 82, 0.28)",
+      "--bg-overlay": "rgba(31, 42, 57, 0.38)",
+      "--menu-bg": "rgba(24, 31, 43, 0.74)",
+      "--menu-overlay-bg": "rgba(18, 24, 34, 0.82)",
+      "--file-row-bg": "rgba(136, 192, 208, 0.06)",
+      "--file-row-hover": "rgba(143, 188, 187, 0.18)",
+      "--file-row-active": "rgba(94, 129, 172, 0.42)",
+      "--bg-hover": "rgba(143, 188, 187, 0.18)",
+      "--bg-active": "rgba(94, 129, 172, 0.42)",
+      "--modal-backdrop": "rgba(8, 12, 20, 0.58)",
+      "--text-primary": "rgba(236, 239, 244, 0.96)",
+      "--text-secondary": "rgba(216, 222, 233, 0.76)",
+      "--text-muted": "rgba(216, 222, 233, 0.5)",
+      "--border-color": "rgba(136, 192, 208, 0.2)",
+      "--accent-color": "rgba(94, 129, 172, 0.68)",
+      "--accent-hover": "rgba(129, 161, 193, 0.98)",
+      "--success-color": "rgba(163, 190, 140, 0.82)",
+      "--danger-color": "rgba(191, 97, 106, 0.82)",
+      "--shadow": "0 16px 48px rgba(7, 11, 18, 0.35)",
+      "--blur-amount": "24px",
+    },
+  },
+  {
+    id: "amber-glow",
+    name: "Amber Glow",
+    description: "Warm amber glass with lighter panels.",
+    overrides: {
+      "--bg-primary": "rgba(54, 34, 18, 0.12)",
+      "--bg-secondary": "rgba(78, 49, 21, 0.17)",
+      "--bg-tertiary": "rgba(108, 63, 24, 0.23)",
+      "--bg-overlay": "rgba(145, 92, 43, 0.26)",
+      "--menu-bg": "rgba(62, 39, 17, 0.72)",
+      "--menu-overlay-bg": "rgba(47, 29, 13, 0.82)",
+      "--file-row-bg": "rgba(255, 207, 138, 0.06)",
+      "--file-row-hover": "rgba(255, 208, 136, 0.18)",
+      "--file-row-active": "rgba(223, 146, 64, 0.48)",
+      "--bg-hover": "rgba(255, 208, 136, 0.18)",
+      "--bg-active": "rgba(223, 146, 64, 0.48)",
+      "--modal-backdrop": "rgba(22, 12, 4, 0.52)",
+      "--text-primary": "rgba(255, 243, 222, 0.97)",
+      "--text-secondary": "rgba(247, 221, 183, 0.74)",
+      "--text-muted": "rgba(247, 221, 183, 0.5)",
+      "--border-color": "rgba(255, 207, 138, 0.18)",
+      "--accent-color": "rgba(255, 164, 72, 0.72)",
+      "--accent-hover": "rgba(255, 195, 123, 0.98)",
+      "--success-color": "rgba(166, 226, 161, 0.82)",
+      "--danger-color": "rgba(255, 120, 104, 0.82)",
+      "--shadow": "0 16px 44px rgba(29, 14, 3, 0.34)",
+      "--blur-amount": "22px",
+    },
+  },
+  {
+    id: "forest-mist",
+    name: "Forest Mist",
+    description: "Muted green glass for softer contrast.",
+    overrides: {
+      "--bg-primary": "rgba(20, 38, 28, 0.12)",
+      "--bg-secondary": "rgba(28, 54, 39, 0.18)",
+      "--bg-tertiary": "rgba(37, 74, 51, 0.24)",
+      "--bg-overlay": "rgba(49, 92, 67, 0.28)",
+      "--menu-bg": "rgba(19, 35, 26, 0.74)",
+      "--menu-overlay-bg": "rgba(15, 28, 21, 0.82)",
+      "--file-row-bg": "rgba(110, 231, 183, 0.05)",
+      "--file-row-hover": "rgba(167, 243, 208, 0.14)",
+      "--file-row-active": "rgba(52, 211, 153, 0.38)",
+      "--bg-hover": "rgba(167, 243, 208, 0.14)",
+      "--bg-active": "rgba(52, 211, 153, 0.38)",
+      "--modal-backdrop": "rgba(7, 18, 12, 0.56)",
+      "--text-primary": "rgba(240, 253, 244, 0.95)",
+      "--text-secondary": "rgba(209, 250, 229, 0.74)",
+      "--text-muted": "rgba(209, 250, 229, 0.48)",
+      "--border-color": "rgba(110, 231, 183, 0.18)",
+      "--accent-color": "rgba(52, 211, 153, 0.62)",
+      "--accent-hover": "rgba(110, 231, 183, 0.95)",
+      "--success-color": "rgba(74, 222, 128, 0.8)",
+      "--danger-color": "rgba(248, 113, 113, 0.8)",
+      "--shadow": "0 14px 42px rgba(4, 14, 8, 0.34)",
+      "--blur-amount": "22px",
+    },
+  },
+  {
+    id: "light-frost",
+    name: "Light Frost",
+    description: "Bright translucent panels for daytime use.",
+    overrides: {
+      "--bg-primary": "rgba(248, 250, 252, 0.45)",
+      "--bg-secondary": "rgba(255, 255, 255, 0.56)",
+      "--bg-tertiary": "rgba(241, 245, 249, 0.68)",
+      "--bg-overlay": "rgba(226, 232, 240, 0.64)",
+      "--menu-bg": "rgba(255, 255, 255, 0.84)",
+      "--menu-overlay-bg": "rgba(248, 250, 252, 0.92)",
+      "--file-row-bg": "rgba(148, 163, 184, 0.06)",
+      "--file-row-hover": "rgba(148, 163, 184, 0.18)",
+      "--file-row-active": "rgba(59, 130, 246, 0.24)",
+      "--bg-hover": "rgba(148, 163, 184, 0.18)",
+      "--bg-active": "rgba(59, 130, 246, 0.24)",
+      "--modal-backdrop": "rgba(148, 163, 184, 0.26)",
+      "--text-primary": "rgba(15, 23, 42, 0.96)",
+      "--text-secondary": "rgba(51, 65, 85, 0.8)",
+      "--text-muted": "rgba(71, 85, 105, 0.6)",
+      "--border-color": "rgba(148, 163, 184, 0.28)",
+      "--accent-color": "rgba(37, 99, 235, 0.62)",
+      "--accent-hover": "rgba(59, 130, 246, 0.92)",
+      "--success-color": "rgba(22, 163, 74, 0.8)",
+      "--danger-color": "rgba(220, 38, 38, 0.78)",
+      "--shadow": "0 18px 40px rgba(148, 163, 184, 0.24)",
+      "--blur-amount": "18px",
+    },
+  },
+];
 
 var quickAccessItems = [];
 var pinnedListEl = null;
@@ -278,31 +433,29 @@ function clearThumbnailObserver() {
 function openThemeCustomizer() {
   themeModal = document.getElementById("theme-modal");
   if (themeModal) {
-    themeModal.style.display = "block";
+    themeSavedOverridesSnapshot = { ...themeOverrides };
+    themeDraftOverrides = { ...themeOverrides };
+    themeModal.classList.add("visible");
     buildThemeModal();
   }
 }
 
-function closeThemeCustomizer() {
+function closeThemeCustomizer(options = {}) {
   if (!themeModal) themeModal = document.getElementById("theme-modal");
   if (themeModal) {
-    themeModal.style.display = "none";
+    const shouldRevert = options.revert !== false;
+    if (shouldRevert) {
+      themeDraftOverrides = { ...themeSavedOverridesSnapshot };
+      applyThemeOverrides(themeSavedOverridesSnapshot);
+    }
+    themeModal.classList.remove("visible");
   }
 }
 
 function resetThemeToDefaults() {
-  themeOverrides = {};
-  localStorage.removeItem("themeColors");
-  applyThemeOverrides();
+  themeDraftOverrides = {};
+  applyThemeOverrides(themeDraftOverrides);
   buildThemeModal();
-}
-
-function applyThemeOverrides(overrides) {
-  themeOverrides = { ...(overrides || {}) };
-  const root = document.documentElement;
-  for (const [key, value] of Object.entries(themeOverrides)) {
-    if (value) root.style.setProperty(key, value);
-  }
 }
 
 var CONTEXT_MENU_ICONS = {
@@ -576,8 +729,13 @@ function readLocalStorageJson(key, fallback) {
 function applyThemeOverrides(overrides) {
   themeOverrides = { ...(overrides || {}) };
   const root = document.documentElement;
+  for (const [key, value] of Object.entries(THEME_VARIABLE_DEFAULTS)) {
+    root.style.setProperty(key, value);
+  }
   for (const [key, value] of Object.entries(themeOverrides)) {
-    if (value) root.style.setProperty(key, value);
+    if (value !== undefined && value !== null && value !== "") {
+      root.style.setProperty(key, value);
+    }
   }
 }
 
@@ -649,39 +807,464 @@ function hexToRgb(hex) {
   return { r, g, b };
 }
 
-function buildThemeModal() {
+function getThemeValue(key) {
+  return themeDraftOverrides[key] || THEME_VARIABLE_DEFAULTS[key] || "";
+}
+
+function getThemeRgbaValue(key) {
+  return parseRgbValue(getThemeValue(key));
+}
+
+function setDraftThemeValue(key, value) {
+  if (!value || value === THEME_VARIABLE_DEFAULTS[key]) {
+    delete themeDraftOverrides[key];
+  } else {
+    themeDraftOverrides[key] = value;
+  }
+}
+
+function applyThemeDraft() {
+  applyThemeOverrides(themeDraftOverrides);
+}
+
+function saveThemeCustomizer() {
+  themeOverrides = { ...themeDraftOverrides };
+  saveThemeOverrides();
+  themeSavedOverridesSnapshot = { ...themeOverrides };
+  closeThemeCustomizer({ revert: false });
+}
+
+function buildThemeColorFromHex(hex, alpha, fallback) {
+  const { r, g, b } = normalizeColorValue(hex || fallback);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function syncFileRowPaletteFromTheme() {
+  const base = getThemeRgbaValue("--bg-tertiary");
+  const accent = getThemeRgbaValue("--accent-color");
+  const bgAlpha = getThemeRgbaValue("--file-row-bg").a;
+  const hoverAlpha = getThemeRgbaValue("--file-row-hover").a;
+  const activeAlpha = getThemeRgbaValue("--file-row-active").a;
+
+  setDraftThemeValue(
+    "--file-row-bg",
+    `rgba(${base.r}, ${base.g}, ${base.b}, ${bgAlpha})`,
+  );
+  setDraftThemeValue(
+    "--file-row-hover",
+    `rgba(${accent.r}, ${accent.g}, ${accent.b}, ${hoverAlpha})`,
+  );
+  setDraftThemeValue(
+    "--file-row-active",
+    `rgba(${accent.r}, ${accent.g}, ${accent.b}, ${activeAlpha})`,
+  );
+}
+
+function updateTintFamily(hex) {
+  const bgPrimaryAlpha = getThemeRgbaValue("--bg-primary").a;
+  const bgSecondaryAlpha = getThemeRgbaValue("--bg-secondary").a;
+  const bgTertiaryAlpha = getThemeRgbaValue("--bg-tertiary").a;
+  const bgOverlayAlpha = getThemeRgbaValue("--bg-overlay").a;
+  const menuBgAlpha = getThemeRgbaValue("--menu-bg").a;
+  const menuOverlayAlpha = getThemeRgbaValue("--menu-overlay-bg").a;
+  setDraftThemeValue("--bg-primary", buildThemeColorFromHex(hex, bgPrimaryAlpha, hex));
+  setDraftThemeValue("--bg-secondary", buildThemeColorFromHex(hex, bgSecondaryAlpha, hex));
+  setDraftThemeValue("--bg-tertiary", buildThemeColorFromHex(hex, bgTertiaryAlpha, hex));
+  setDraftThemeValue("--bg-overlay", buildThemeColorFromHex(hex, bgOverlayAlpha, hex));
+  setDraftThemeValue("--menu-bg", buildThemeColorFromHex(hex, menuBgAlpha, hex));
+  setDraftThemeValue("--menu-overlay-bg", buildThemeColorFromHex(hex, menuOverlayAlpha, hex));
+  syncFileRowPaletteFromTheme();
+}
+
+function updateTextFamily(hex) {
+  setDraftThemeValue("--text-primary", buildThemeColorFromHex(hex, 0.96, hex));
+  setDraftThemeValue("--text-secondary", buildThemeColorFromHex(hex, 0.76, hex));
+  setDraftThemeValue("--text-muted", buildThemeColorFromHex(hex, 0.52, hex));
+  setDraftThemeValue("--border-color", buildThemeColorFromHex(hex, 0.18, hex));
+}
+
+function updateAccentFamily(hex) {
+  const accentAlpha = getThemeRgbaValue("--accent-color").a || 0.65;
+  setDraftThemeValue("--accent-color", buildThemeColorFromHex(hex, accentAlpha, hex));
+  setDraftThemeValue("--accent-hover", buildThemeColorFromHex(hex, 0.96, hex));
+  syncFileRowPaletteFromTheme();
+}
+
+function updateOpacityVariable(key, alpha) {
+  const current = getThemeRgbaValue(key);
+  setDraftThemeValue(key, `rgba(${current.r}, ${current.g}, ${current.b}, ${alpha})`);
+}
+
+function updateFileRowOpacity(alpha) {
+  updateOpacityVariable("--file-row-bg", alpha);
+  const hoverAlpha = Math.min(1, Math.max(alpha + 0.12, 0.12));
+  const activeAlpha = Math.min(1, Math.max(alpha + 0.32, 0.22));
+  updateOpacityVariable("--file-row-hover", hoverAlpha);
+  updateOpacityVariable("--file-row-active", activeAlpha);
+}
+
+function createThemePresetButton(preset) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "theme-preset-btn";
+  button.innerHTML = `
+    <span class="theme-preset-name">${escapeHtml(preset.name)}</span>
+    <span class="theme-preset-hint">${escapeHtml(preset.description)}</span>
+  `;
+  button.addEventListener("click", () => {
+    themeDraftOverrides = { ...preset.overrides };
+    syncFileRowPaletteFromTheme();
+    applyThemeDraft();
+    buildThemeModal();
+  });
+  return button;
+}
+
+function createThemeSection(title) {
+  const section = document.createElement("div");
+  section.className = "theme-section";
+
+  const header = document.createElement("div");
+  header.className = "theme-section-title";
+  header.textContent = title;
+  section.appendChild(header);
+
+  return section;
+}
+
+function createThemeRow(label, hint, controls) {
+  const row = document.createElement("div");
+  row.className = "theme-row";
+
+  const labelWrap = document.createElement("div");
+  labelWrap.className = "theme-label";
+
+  const name = document.createElement("div");
+  name.className = "theme-name";
+  name.textContent = label;
+
+  const sub = document.createElement("div");
+  sub.className = "theme-hint";
+  sub.textContent = hint;
+
+  labelWrap.appendChild(name);
+  labelWrap.appendChild(sub);
+  row.appendChild(labelWrap);
+
+  const controlsWrap = document.createElement("div");
+  controlsWrap.className = "theme-controls";
+  if (Array.isArray(controls)) {
+    controls.forEach((control) => controlsWrap.appendChild(control));
+  } else if (controls) {
+    controlsWrap.appendChild(controls);
+  }
+  row.appendChild(controlsWrap);
+  return row;
+}
+
+function createColorControl(value, onInput) {
+  const input = document.createElement("input");
+  input.type = "color";
+  input.className = "theme-color-input";
+  input.value = value;
+  input.addEventListener("input", () => {
+    onInput(input.value);
+    applyThemeDraft();
+    buildThemeModal();
+  });
+  return input;
+}
+
+function createSliderControl(value, min, max, step, formatValue, onInput) {
+  const wrap = document.createElement("div");
+  wrap.className = "theme-opacity";
+
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.className = "theme-alpha-input";
+  slider.min = String(min);
+  slider.max = String(max);
+  slider.step = String(step);
+  slider.value = String(value);
+
+  const readout = document.createElement("span");
+  readout.className = "theme-alpha-value";
+  readout.textContent = formatValue(value);
+
+  slider.addEventListener("input", () => {
+    const next = Number(slider.value);
+    readout.textContent = formatValue(next);
+    onInput(next);
+    applyThemeDraft();
+  });
+
+  wrap.appendChild(slider);
+  wrap.appendChild(readout);
+  return wrap;
+}
+
+function createThemeActionButton(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "theme-chip-btn";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function applyWalTheme(theme) {
+  if (!theme?.special?.background || !theme?.special?.foreground) return;
+  const background = theme.special.background;
+  const foreground = theme.special.foreground;
+  const accent =
+    theme.special.cursor ||
+    theme.colors?.color4 ||
+    theme.colors?.color6 ||
+    foreground;
+  const overlay = theme.colors?.color0 || background;
+
+  themeDraftOverrides = {
+    "--bg-primary": buildThemeColorFromHex(background, 0.16, background),
+    "--bg-secondary": buildThemeColorFromHex(background, 0.22, background),
+    "--bg-tertiary": buildThemeColorFromHex(overlay, 0.3, overlay),
+    "--bg-overlay": buildThemeColorFromHex(overlay, 0.38, overlay),
+    "--menu-bg": buildThemeColorFromHex(background, 0.76, background),
+    "--menu-overlay-bg": buildThemeColorFromHex(background, 0.84, background),
+    "--bg-hover": buildThemeColorFromHex(accent, 0.18, accent),
+    "--bg-active": buildThemeColorFromHex(accent, 0.34, accent),
+    "--modal-backdrop": buildThemeColorFromHex(background, 0.58, background),
+    "--text-primary": buildThemeColorFromHex(foreground, 0.96, foreground),
+    "--text-secondary": buildThemeColorFromHex(foreground, 0.76, foreground),
+    "--text-muted": buildThemeColorFromHex(foreground, 0.52, foreground),
+    "--border-color": buildThemeColorFromHex(foreground, 0.18, foreground),
+    "--accent-color": buildThemeColorFromHex(accent, 0.62, accent),
+    "--accent-hover": buildThemeColorFromHex(accent, 0.96, accent),
+    "--success-color": buildThemeColorFromHex(theme.colors?.color2 || "#5ee38c", 0.82, "#5ee38c"),
+    "--danger-color": buildThemeColorFromHex(theme.colors?.color1 || "#ff6b6b", 0.82, "#ff6b6b"),
+    "--blur-amount": inferWalVariant(theme) === "light" ? "16px" : "24px",
+  };
+  syncFileRowPaletteFromTheme();
+  applyThemeDraft();
+  buildThemeModal();
+}
+
+async function loadWalThemes() {
+  if (themeWalThemesCache) return themeWalThemesCache;
+  try {
+    const themes = await window.fileManager.getWalThemes();
+    themeWalThemesCache = Array.isArray(themes) ? themes : [];
+  } catch (error) {
+    console.warn("Failed to load wal themes:", error);
+    themeWalThemesCache = [];
+  }
+  return themeWalThemesCache;
+}
+
+async function buildThemeModal() {
   if (!themeModalBody) return;
   themeModalBody.innerHTML = "";
   themeControlMap.clear();
 
-  const walSection = document.createElement("div");
-  walSection.className = "theme-section";
+  const presetSection = createThemeSection("Theme Presets");
+  const presetGrid = document.createElement("div");
+  presetGrid.className = "theme-preset-grid";
+  BUILTIN_THEME_PRESETS.forEach((preset) => {
+    presetGrid.appendChild(createThemePresetButton(preset));
+  });
+  presetSection.appendChild(presetGrid);
+  themeModalBody.appendChild(presetSection);
 
-  const walHeader = document.createElement("div");
-  walHeader.className = "theme-section-title";
-  walHeader.textContent = "Wal Themes";
-  walSection.appendChild(walHeader);
+  const appearanceSection = createThemeSection("Glass And Transparency");
+  const tintHex = rgbToHex(
+    getThemeRgbaValue("--bg-secondary").r,
+    getThemeRgbaValue("--bg-secondary").g,
+    getThemeRgbaValue("--bg-secondary").b,
+  );
+  const textHex = rgbToHex(
+    getThemeRgbaValue("--text-primary").r,
+    getThemeRgbaValue("--text-primary").g,
+    getThemeRgbaValue("--text-primary").b,
+  );
+  const accentHex = rgbToHex(
+    getThemeRgbaValue("--accent-color").r,
+    getThemeRgbaValue("--accent-color").g,
+    getThemeRgbaValue("--accent-color").b,
+  );
+  appearanceSection.appendChild(
+    createThemeRow(
+      "Base Tint",
+      "The main glass color used across panels and menus.",
+      createColorControl(tintHex, updateTintFamily),
+    ),
+  );
+  appearanceSection.appendChild(
+    createThemeRow(
+      "Text Color",
+      "Updates primary, secondary, and muted text together.",
+      createColorControl(textHex, updateTextFamily),
+    ),
+  );
+  appearanceSection.appendChild(
+    createThemeRow(
+      "Accent Color",
+      "Used for selection, active states, and action buttons.",
+      createColorControl(accentHex, updateAccentFamily),
+    ),
+  );
+  appearanceSection.appendChild(
+    createThemeRow(
+      "Panel Opacity",
+      "Higher values make the main window easier to read.",
+      createSliderControl(
+        getThemeRgbaValue("--bg-secondary").a,
+        0.04,
+        0.9,
+        0.01,
+        (value) => `${Math.round(value * 100)}%`,
+        (value) => {
+          updateOpacityVariable("--bg-primary", Math.max(0.01, value * 0.7));
+          updateOpacityVariable("--bg-secondary", value);
+          updateOpacityVariable("--bg-tertiary", Math.min(1, value + 0.08));
+        },
+      ),
+    ),
+  );
+  appearanceSection.appendChild(
+    createThemeRow(
+      "File Row Opacity",
+      "Controls the background behind file names and metadata rows.",
+      createSliderControl(
+        getThemeRgbaValue("--file-row-bg").a,
+        0,
+        0.85,
+        0.01,
+        (value) => `${Math.round(value * 100)}%`,
+        (value) => updateFileRowOpacity(value),
+      ),
+    ),
+  );
+  appearanceSection.appendChild(
+    createThemeRow(
+      "Overlay Opacity",
+      "Controls menus, modals, and dense surfaces.",
+      createSliderControl(
+        getThemeRgbaValue("--bg-overlay").a,
+        0.04,
+        0.98,
+        0.01,
+        (value) => `${Math.round(value * 100)}%`,
+        (value) => {
+          updateOpacityVariable("--bg-overlay", value);
+          updateOpacityVariable("--menu-bg", Math.min(1, value + 0.26));
+          updateOpacityVariable("--menu-overlay-bg", Math.min(1, value + 0.34));
+        },
+      ),
+    ),
+  );
+  appearanceSection.appendChild(
+    createThemeRow(
+      "Backdrop Dim",
+      "How much the background darkens behind modals.",
+      createSliderControl(
+        getThemeRgbaValue("--modal-backdrop").a,
+        0,
+        0.9,
+        0.01,
+        (value) => `${Math.round(value * 100)}%`,
+        (value) => updateOpacityVariable("--modal-backdrop", value),
+      ),
+    ),
+  );
+  appearanceSection.appendChild(
+    createThemeRow(
+      "Blur Strength",
+      "Adds or reduces the frosted-glass blur effect.",
+      createSliderControl(
+        parseInt(getThemeValue("--blur-amount"), 10) || 20,
+        0,
+        40,
+        1,
+        (value) => `${value}px`,
+        (value) => setDraftThemeValue("--blur-amount", `${value}px`),
+      ),
+    ),
+  );
+  themeModalBody.appendChild(appearanceSection);
 
-  const walRow = document.createElement("div");
-  walRow.className = "theme-row";
+  const quickSection = createThemeSection("Quick Tuning");
+  const quickActions = document.createElement("div");
+  quickActions.className = "theme-controls theme-inline-actions";
+  quickActions.appendChild(
+    createThemeActionButton("More Transparent", () => {
+      const next = Math.max(0.04, getThemeRgbaValue("--bg-secondary").a - 0.06);
+      updateOpacityVariable("--bg-primary", Math.max(0.01, next * 0.7));
+      updateOpacityVariable("--bg-secondary", next);
+      updateOpacityVariable("--bg-tertiary", Math.max(0.02, next + 0.08));
+      updateFileRowOpacity(Math.max(0, getThemeRgbaValue("--file-row-bg").a - 0.05));
+      applyThemeDraft();
+      buildThemeModal();
+    }),
+  );
+  quickActions.appendChild(
+    createThemeActionButton("More Solid", () => {
+      const next = Math.min(0.9, getThemeRgbaValue("--bg-secondary").a + 0.06);
+      updateOpacityVariable("--bg-primary", Math.max(0.01, next * 0.7));
+      updateOpacityVariable("--bg-secondary", next);
+      updateOpacityVariable("--bg-tertiary", Math.min(1, next + 0.08));
+      updateFileRowOpacity(Math.min(0.85, getThemeRgbaValue("--file-row-bg").a + 0.05));
+      applyThemeDraft();
+      buildThemeModal();
+    }),
+  );
+  quickActions.appendChild(
+    createThemeActionButton("Sharper Blur", () => {
+      const next = Math.min(
+        40,
+        (parseInt(getThemeValue("--blur-amount"), 10) || 20) + 4,
+      );
+      setDraftThemeValue("--blur-amount", `${next}px`);
+      applyThemeDraft();
+      buildThemeModal();
+    }),
+  );
+  quickActions.appendChild(
+    createThemeActionButton("Softer Blur", () => {
+      const next = Math.max(
+        0,
+        (parseInt(getThemeValue("--blur-amount"), 10) || 20) - 4,
+      );
+      setDraftThemeValue("--blur-amount", `${next}px`);
+      applyThemeDraft();
+      buildThemeModal();
+    }),
+  );
+  quickSection.appendChild(quickActions);
+  themeModalBody.appendChild(quickSection);
 
-  const walLabel = document.createElement("div");
-  walLabel.className = "theme-label";
-
-  const walName = document.createElement("div");
-  walName.className = "theme-name";
-  walName.textContent = "Apply a wal colorscheme";
-
-  const walHint = document.createElement("div");
-  walHint.className = "theme-hint";
-  walHint.textContent = "Generates a theme from your wallpaper";
-
-  walLabel.appendChild(walName);
-  walLabel.appendChild(walHint);
-  walRow.appendChild(walLabel);
-  walSection.appendChild(walRow);
-
-  themeModalBody.appendChild(walSection);
+  const walThemes = await loadWalThemes();
+  if (walThemes.length > 0) {
+    const walSection = createThemeSection("Wal Themes");
+    const select = document.createElement("select");
+    select.className = "theme-select";
+    walThemes.forEach((theme, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = theme.name || theme.path || `Theme ${index + 1}`;
+      select.appendChild(option);
+    });
+    const applyButton = createThemeActionButton("Apply Wal Theme", () => {
+      const selected = walThemes[Number(select.value)];
+      if (selected) applyWalTheme(selected);
+    });
+    walSection.appendChild(
+      createThemeRow(
+        "Wallpaper Theme",
+        "Import a pywal colorscheme from your existing wallpaper themes.",
+        [select, applyButton],
+      ),
+    );
+    themeModalBody.appendChild(walSection);
+  }
 }
 
 function trimCache(cacheMap, maxEntries) {

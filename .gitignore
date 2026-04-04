@@ -4,7 +4,9 @@ node_modules/
 # Build output
 dist/
 out/
-build/
+build/*
+!build/icon.*
+!build/icons/
 src-tauri/target/
 
 # Electron build artifacts
@@ -40,9 +42,9 @@ Thumbs.db
 .env.*.local
 
 # AI assistant artifacts
-# Try not to use AI
 .aider*
-.claude/ 
+.claude/
+.codex
 
 # Temporary files
 *.tmp

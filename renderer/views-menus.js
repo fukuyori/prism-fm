@@ -480,7 +480,9 @@ function createTagsRow(targetPath) {
 function buildUndoMenuItem() {
   const hasUndo = undoStack.length > 0;
   return {
-    label: getUndoMenuLabel(),
+    label: undoStack.length > 0
+      ? undoStack[undoStack.length - 1].label || "Undo"
+      : "Undo",
     icon: CONTEXT_MENU_ICONS.undo,
     disabled: !hasUndo,
     onClick: () => performUndo(),
