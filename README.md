@@ -6,64 +6,33 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 
 ![Preview](file-manager.png)
 
-## Changelog
+## Recent Changes
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
+
+### v1.0.0-spumoni.3.2
+
+- Windows Recycle Bin browsing via native `$I` file parsing (no PowerShell)
+- Bundled 7za for cross-platform archive operations
+- Japanese font support, date sort improvements, installer process termination
 
 ### v1.0.0-spumoni.3.1
 
-#### Windows support
-
-- **Window controls** -- Custom minimize/maximize/close buttons using `frame: false` (macOS uses native `titleBarStyle: "hidden"`)
-- **Maximize button state** -- Icon switches between maximize (square) and restore (overlapping squares) on state change
-- **Hidden file detection** -- Uses Windows `H` attribute via `dir /ah /b` and dot-prefix for correct hidden file recognition
-- **Build workflow** -- Separate pack and installer steps for code signing workflow
-
-#### Bug fixes
-
-- **Split view column visibility** -- Column display settings (Size, Date Modified, Date Added) are now global instead of per-folder, ensuring consistent display across split view panes
-- **Column element overflow** -- Hidden columns now use `display: none` to prevent content from overflowing below file names
-- **External drop default action** -- Drag from external apps defaults to move (Ctrl for copy) instead of always copying
-
-#### Drag and drop
-
-- **Native drag to external apps** -- Files can be dragged from Prism FM to the desktop or other applications using Electron's `startDrag` API
-- **Internal drag via native path** -- Internal and external drops are distinguished by an `isDragging` flag for correct move/copy behavior
-- **Drag cleanup** -- Drag state is cleaned up via `drag-ended` IPC after native drag completes
-
-#### New file type icons (20 categories)
-
-PDF, Spreadsheet, Presentation, Document, Text, Code (`</>`), Markup (`<>`), Data (bar chart), Script (terminal), Database (cylinder), Font (Aa), Archive (lock box), Disk Image (disc), Executable (play), Library (book), Key/Certificate (key), 3D Model (layers) -- all in consistent outline style with existing icons
-
-#### Theme adjustments
-
-- **Default opacity** -- Background opacity increased from ~5% to ~65% across all built-in theme presets (Default Glass, Nord Frost, Amber Glow, Forest Mist, Light Frost) for better readability
-- **CSS and JS defaults synchronized** -- `:root` variables and `THEME_VARIABLE_DEFAULTS` kept in sync
-
-#### Performance improvements
-
-- **Hidden file detection** -- Replaced `attrib` per-file parsing with single `dir /ah /b` call per directory
-- **Resize throttling** -- Window, sidebar, column, and preview panel resize handlers batched via `requestAnimationFrame`
-- **IPC reduction** -- `parsePath` and `joinPaths` moved to renderer-local functions, eliminating 2 IPC round-trips per file during paste/drop
-- **Async startup** -- `get-common-directories` handler converted from `fsSync` to async `fs.stat` with `Promise.all`
-- **Dead code removal** -- Non-functional thumbnail observer stub removed
-
-#### Installer
-
-- **NSIS cleanup** -- `deleteAppDataOnUninstall: true` added to remove `%APPDATA%\prism-fm` on uninstall
-- **DevTools access** -- F12 / Ctrl+Shift+I enabled in production builds for debugging
+- Windows window controls, hidden file detection, native drag-and-drop
+- 14 new file type icons, theme opacity adjustments, performance optimizations
+- Separate pack/installer build scripts for code signing
 
 ### v1.0.0-spumoni.3
 
-- **Window controls for Windows and Linux** -- Custom title bar buttons (minimize, maximize, close) for non-macOS platforms
+- Custom window controls for Windows and Linux
 
 ### v1.0.0-spumoni.2
 
-- **Tab bar fix** -- Fixed tab bar overlapping window controls on macOS
+- Tab bar overlap fix for macOS
 
 ### v1.0.0-spumoni.1
 
-- **Context menu fix** -- Fixed undefined variables and moved handlers to document-level listeners
-- **Performance** -- Search debounce, scroll throttle, virtual scrolling, DOM optimization, selection diff update, async archive operations
-- **New features** -- Application icon, deb package build, cross-platform build scripts
+- Context menu fix, performance improvements, application icon, cross-platform builds
 
 ## Features
 
@@ -169,4 +138,8 @@ windowrulev2 = opacity 0.9 0.8,class:^(prism-fm)$
 
 ## License
 
-GPL-3.0 (Original code by tomiwaf licensed under MIT)
+This fork is licensed under [GPL-3.0](LICENSE).
+
+The original Prism FM by tomiwaf is licensed under MIT. This fork includes the bundled [7za binary](https://www.7-zip.org/) (LGPL-2.1) for archive operations.
+
+See [LICENSES-THIRD-PARTY.md](LICENSES-THIRD-PARTY.md) for full third-party license details.

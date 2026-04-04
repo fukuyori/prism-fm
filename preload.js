@@ -20,6 +20,7 @@ const fileManagerApi = {
   deleteItem: invoke("delete-item"),
   deleteItemSudo: invoke("delete-item-sudo"),
   trashItem: invoke("trash-item"),
+  emptyRecycleBin: invoke("empty-recycle-bin"),
   restoreTrashItems: invoke("restore-trash-items"),
   renameItem: invoke("rename-item"),
   createFolder: invoke("create-folder"),

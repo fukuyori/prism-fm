@@ -521,7 +521,7 @@ async function compressSelected() {
   );
   if (!archiveName) return;
 
-  const outputPath = await window.fileManager.joinPaths(
+  const outputPath = localJoinPaths(
     currentPath,
     archiveName,
   );
@@ -674,17 +674,24 @@ async function createNewFile() {
 function updateToolbarForTrash() {
   if (!newFolderBtn || !newFileBtn || !emptyTrashBtn) return;
 
+  const addedHeaders = document.querySelectorAll(".header-added");
   if (isInTrash) {
     newFolderBtn.style.display = "none";
     newFileBtn.style.display = "none";
     emptyTrashBtn.style.display = "";
     emptyTrashBtn.title = "Empty Trash";
+    addedHeaders.forEach((el) => {
+      el.childNodes[0].textContent = "Deleted";
+    });
   } else {
     newFolderBtn.style.display = "";
     newFileBtn.style.display = "";
     emptyTrashBtn.style.display = "none";
     newFolderBtn.title = "New Folder";
     newFileBtn.title = "New File";
+    addedHeaders.forEach((el) => {
+      el.childNodes[0].textContent = "Added";
+    });
   }
 }
 
@@ -711,14 +718,21 @@ async function emptyTrash() {
   }
 
   try {
-    const res = await window.fileManager.getDirectoryContents(commonDirs.trash);
-    if (!res || !res.success) {
-      showNotification("Failed to read Trash", "error");
-      return;
-    }
-
-    for (const item of res.contents) {
-      await window.fileManager.deleteItem(item.path);
+    if (commonDirs.trash === "shell:RecycleBinFolder" && window.fileManager.emptyRecycleBin) {
+      const result = await window.fileManager.emptyRecycleBin();
+      if (!result || !result.success) {
+        showNotification(result?.error || "Failed to empty Recycle Bin", "error");
+        return;
+      }
+    } else {
+      const res = await window.fileManager.getDirectoryContents(commonDirs.trash);
+      if (!res || !res.success) {
+        showNotification("Failed to read Trash", "error");
+        return;
+      }
+      for (const item of res.contents) {
+        await window.fileManager.deleteItem(item.path);
+      }
     }
 
     showNotification("Trash emptied");
