@@ -185,17 +185,11 @@ function applyViewSettings(path) {
   sortAscending = settings.sortAscending;
   groupBy = settings.groupBy;
   viewMode = settings.viewMode;
-  visibleColumns = settings.visibleColumns;
-  const container =
-    splitViewEnabled && panes[activePaneId]?.fileListEl
-      ? panes[activePaneId].fileListEl.closest(".file-list-container")
-      : null;
-  applyColumnVisibility(container, visibleColumns);
+  applyColumnVisibility(null, visibleColumns);
 }
 
 function resolveViewSettings(path) {
   const key = normalizePathForCompare(path);
-  const defaultColumns = { size: true, modified: true, added: true };
 
   if (viewSettingsCache[key]) {
     const s = viewSettingsCache[key];
@@ -205,7 +199,6 @@ function resolveViewSettings(path) {
         typeof s.sortAscending === "boolean" ? s.sortAscending : true,
       groupBy: s.groupBy || "none",
       viewMode: s.viewMode || "detailed",
-      visibleColumns: s.visibleColumns || defaultColumns,
     };
   }
 
@@ -219,7 +212,6 @@ function resolveViewSettings(path) {
       sortAscending: false,
       groupBy: "dateModified",
       viewMode: "detailed",
-      visibleColumns: defaultColumns,
     };
   }
 
@@ -228,7 +220,6 @@ function resolveViewSettings(path) {
     sortAscending: true,
     groupBy: "none",
     viewMode: "detailed",
-    visibleColumns: defaultColumns,
   };
 }
 
@@ -260,7 +251,6 @@ function saveCurrentViewSettings() {
     sortAscending,
     groupBy,
     viewMode,
-    visibleColumns,
   };
   try {
     trimObjectCache(viewSettingsCache, MAX_VIEW_SETTINGS_CACHE_ENTRIES);

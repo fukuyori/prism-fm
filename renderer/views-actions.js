@@ -45,8 +45,8 @@ async function paste() {
   const batchItems = [];
 
   for (const sourcePath of itemsToPaste) {
-    const parsed = await window.fileManager.parsePath(sourcePath);
-    const destPath = await window.fileManager.joinPaths(currentPath, parsed.base);
+    const parsed = localParsePath(sourcePath);
+    const destPath = localJoinPaths(currentPath, parsed.base);
     batchItems.push({ source: sourcePath, dest: destPath });
   }
 
@@ -144,11 +144,8 @@ async function handleFileDrop(
 
   try {
     for (const sourcePath of sourcePaths) {
-      const parsed = await window.fileManager.parsePath(sourcePath);
-      const destPath = await window.fileManager.joinPaths(
-        targetDir,
-        parsed.base,
-      );
+      const parsed = localParsePath(sourcePath);
+      const destPath = localJoinPaths(targetDir, parsed.base);
       const normSourcePath = normalizePathForCompare(sourcePath);
       const normDestPath = normalizePathForCompare(destPath);
 

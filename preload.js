@@ -40,6 +40,12 @@ const fileManagerApi = {
   onFileOperationProgress: (callback) =>
     ipcRenderer.on("file-operation-progress", (event, percent) => callback(percent)),
 
+  startDrag: send("start-drag"),
+  onDragEnded: (callback) =>
+    ipcRenderer.on("drag-ended", () => callback()),
+  onWindowMaximized: (callback) =>
+    ipcRenderer.on("window-maximized", (event, isMaximized) => callback(isMaximized)),
+
   clipboardCopyPaths: invoke("clipboard-copy-paths"),
 
   pathExists: invoke("path-exists"),

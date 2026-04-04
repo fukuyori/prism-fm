@@ -228,15 +228,9 @@ function createWindow() {
     vibrancy: "under-window",
     visualEffectState: "active",
     backgroundColor: "#00000000",
-    titleBarStyle: "hidden",
-    trafficLightPosition: { x: 10, y: 10 },
-    ...(process.platform === "win32" && {
-      titleBarOverlay: {
-        color: "#00000000",
-        symbolColor: "#ffffff",
-        height: 40,
-      },
-    }),
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hidden", trafficLightPosition: { x: 10, y: 10 } }
+      : { frame: false }),
     icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       nodeIntegration: false,
@@ -286,12 +280,19 @@ function createWindow() {
       (input.control || input.meta) &&
       input.shift;
 
-    if ((isF12 || isCtrlShiftI) && isDev) {
+    if (isF12 || isCtrlShiftI) {
       event.preventDefault();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.toggleDevTools();
       }
     }
+  });
+
+  mainWindow.on("maximize", () => {
+    mainWindow.webContents.send("window-maximized", true);
+  });
+  mainWindow.on("unmaximize", () => {
+    mainWindow.webContents.send("window-maximized", false);
   });
 
   mainWindow.on("closed", () => {
@@ -357,14 +358,38 @@ ipcMain.on("picker-cancel", () => {
 });
 
 
+const { execFile } = require("child_process");
+
+function getWindowsHiddenSet(dirPath) {
+  return new Promise((resolve) => {
+    execFile("cmd.exe", ["/c", "dir", "/ah", "/b", dirPath],
+      { encoding: "utf8", windowsHide: true, timeout: 5000, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout) => {
+        const hidden = new Set();
+        if (err || !stdout) { resolve(hidden); return; }
+        for (const name of stdout.split("\r\n")) {
+          if (name) hidden.add(name);
+        }
+        resolve(hidden);
+      },
+    );
+  });
+}
+
 ipcMain.handle("get-directory-contents", async (event, dirPath) => {
   try {
     const items = await fs.readdir(dirPath, { withFileTypes: true });
+    const isWin = process.platform === "win32";
+    const winHiddenSet = isWin ? await getWindowsHiddenSet(dirPath) : null;
+
     const contents = await Promise.all(
       items.map(async (item) => {
         const fullPath = path.join(dirPath, item.name);
         let stats = null;
         let linkTarget = null;
+        const hidden = isWin
+          ? (winHiddenSet.has(item.name) || item.name.startsWith("."))
+          : item.name.startsWith(".");
 
         try {
           stats = await fs.stat(fullPath);
@@ -380,6 +405,7 @@ ipcMain.handle("get-directory-contents", async (event, dirPath) => {
           isFile: item.isFile(),
           isSymlink: item.isSymbolicLink(),
           linkTarget,
+          hidden,
           size: stats?.size || 0,
           modified: stats?.mtime || null,
           created: stats?.birthtime || null,
@@ -417,89 +443,65 @@ ipcMain.handle("get-wal-themes", async () => {
   }
 });
 
-ipcMain.handle("get-common-directories", () => {
+ipcMain.handle("get-common-directories", async () => {
   const homePath = app.getPath("home");
 
-  const existingOrNull = (p) => {
+  const existingOrNull = async (p) => {
     if (!p) return null;
     try {
-      if (fsSync.existsSync(p) && fsSync.statSync(p).isDirectory()) return p;
+      const stat = await fs.stat(p);
+      return stat.isDirectory() ? p : null;
     } catch { }
     return null;
   };
 
-  const getElectronPathOrNull = (name) => {
+  const getElectronPathOrNull = async (name) => {
     try {
-      return existingOrNull(app.getPath(name));
+      return await existingOrNull(app.getPath(name));
     } catch {
       return null;
     }
   };
 
-  const pickHomeSubdir = (candidates) => {
+  const pickHomeSubdir = async (candidates) => {
     for (const name of candidates) {
-      const p = existingOrNull(path.join(homePath, name));
+      const p = await existingOrNull(path.join(homePath, name));
       if (p) return p;
     }
     return null;
   };
 
-  const desktop =
-    getElectronPathOrNull("desktop") ??
-    pickHomeSubdir(["Desktop", "desktop", "Schreibtisch", "Bureau"]) ??
-    homePath;
+  const [desktop, documents, downloads, pictures, music, videos] =
+    await Promise.all([
+      getElectronPathOrNull("desktop")
+        .then((r) => r ?? pickHomeSubdir(["Desktop", "desktop", "Schreibtisch", "Bureau"]))
+        .then((r) => r ?? homePath),
+      getElectronPathOrNull("documents")
+        .then((r) => r ?? pickHomeSubdir(["Documents", "documents", "Dokumente", "Documenti"]))
+        .then((r) => r ?? homePath),
+      getElectronPathOrNull("downloads")
+        .then((r) => r ?? pickHomeSubdir(["Downloads", "downloads", "Téléchargements", "Scaricati"]))
+        .then((r) => r ?? homePath),
+      getElectronPathOrNull("pictures")
+        .then((r) => r ?? pickHomeSubdir(["Pictures", "pictures", "Images", "Bilder", "Immagini"]))
+        .then((r) => r ?? homePath),
+      getElectronPathOrNull("music")
+        .then((r) => r ?? pickHomeSubdir(["Music", "music", "Musik", "Musica"]))
+        .then((r) => r ?? homePath),
+      getElectronPathOrNull("videos")
+        .then((r) => r ?? pickHomeSubdir(["Videos", "videos", "Vidéo", "Video"]))
+        .then((r) => r ?? homePath),
+    ]);
 
-  const documents =
-    getElectronPathOrNull("documents") ??
-    pickHomeSubdir(["Documents", "documents", "Dokumente", "Documenti"]) ??
-    homePath;
-
-  const downloads =
-    getElectronPathOrNull("downloads") ??
-    pickHomeSubdir([
-      "Downloads",
-      "downloads",
-      "Téléchargements",
-      "Scaricati",
-    ]) ??
-    homePath;
-
-  const pictures =
-    getElectronPathOrNull("pictures") ??
-    pickHomeSubdir(["Pictures", "pictures", "Images", "Bilder", "Immagini"]) ??
-    homePath;
-
-  const music =
-    getElectronPathOrNull("music") ??
-    pickHomeSubdir(["Music", "music", "Musik", "Musica"]) ??
-    homePath;
-
-  const videos =
-    getElectronPathOrNull("videos") ??
-    pickHomeSubdir(["Videos", "videos", "Vidéo", "Video"]) ??
-    homePath;
-
-  const trash = (() => {
-    try {
-      if (process.platform === "darwin") {
-        const p = path.join(homePath, ".Trash");
-        return fsSync.existsSync(p) ? p : null;
-      }
-      if (process.platform === "linux") {
-        const candidates = [
-          path.join(homePath, ".local", "share", "Trash", "files"),
-          path.join(homePath, ".Trash"),
-        ];
-        for (const p of candidates) {
-          if (fsSync.existsSync(p)) return p;
-        }
-        return null;
-      }
-      return null;
-    } catch {
-      return null;
+  let trash = null;
+  try {
+    if (process.platform === "darwin") {
+      trash = await existingOrNull(path.join(homePath, ".Trash"));
+    } else if (process.platform === "linux") {
+      trash = await existingOrNull(path.join(homePath, ".local", "share", "Trash", "files"))
+        ?? await existingOrNull(path.join(homePath, ".Trash"));
     }
-  })();
+  } catch { }
 
   return {
     root: "/",
@@ -959,6 +961,16 @@ ipcMain.handle("move-item", async (event, sourcePath, destPath) => {
       return { success: false, error: copyError.message };
     }
   }
+});
+
+ipcMain.on("start-drag", (event, filePaths) => {
+  if (!filePaths || !filePaths.length) return;
+  const icon = path.join(__dirname, "icon.png");
+  event.sender.startDrag({
+    files: filePaths,
+    icon,
+  });
+  event.sender.send("drag-ended");
 });
 
 ipcMain.handle("cancel-operation", async (event, operationId) => {

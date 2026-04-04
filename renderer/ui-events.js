@@ -33,10 +33,10 @@ function setupSidebarToggle() {
     }
   });
 
-  window.addEventListener("resize", () => {
-    if (window.innerWidth > 800) {
-      closeSidebar();
-    }
+  window.fileManager.onDragEnded(() => {
+    setTimeout(() => {
+      if (isDragging) cleanupDragState();
+    }, 100);
   });
 }
 
@@ -388,15 +388,12 @@ function setupFileListHandlers() {
       const targetFolder = e.target.closest(".file-item");
       if (targetFolder?.dataset.isDirectory === "true") return;
 
-      if (draggedItems.length > 0) {
+      if (isDragging && draggedItems.length > 0) {
         const isCopy = e.ctrlKey;
-        await handleFileDrop(
-          draggedItems,
-          currentPath,
-          isCopy,
-          dragSourcePaneId,
-          activePaneId,
-        );
+        const paths = [...draggedItems];
+        const srcPane = dragSourcePaneId;
+        cleanupDragState();
+        await handleFileDrop(paths, currentPath, isCopy, srcPane, activePaneId);
         return;
       }
 
@@ -404,7 +401,8 @@ function setupFileListHandlers() {
         const externalPaths = Array.from(e.dataTransfer.files).map(
           (f) => f.path,
         );
-        await handleFileDrop(externalPaths, currentPath, true, null, activePaneId);
+        cleanupDragState();
+        await handleFileDrop(externalPaths, currentPath, e.ctrlKey, null, activePaneId);
       }
     });
 
@@ -499,10 +497,15 @@ function setupColumnResizers() {
       document.body.style.userSelect = "none";
       document.body.style.cursor = "col-resize";
 
+      let colRafId = null;
       const onMove = (ev) => {
-        const nextWidth = clampMin(startWidth - (ev.clientX - startX), min);
-        widths[column] = nextWidth;
-        applyColumnWidths(widths);
+        if (colRafId) return;
+        colRafId = requestAnimationFrame(() => {
+          colRafId = null;
+          const nextWidth = clampMin(startWidth - (ev.clientX - startX), min);
+          widths[column] = nextWidth;
+          applyColumnWidths(widths);
+        });
       };
 
       const onUp = () => {
@@ -619,11 +622,16 @@ function setupPanelResizers() {
       document.body.style.userSelect = "none";
       document.body.style.cursor = "col-resize";
 
+      let sideRafId = null;
       const onMove = (ev) => {
-        const nextWidth = clamp(startWidth + (ev.clientX - startX), 160, 320);
-        if (appContainer) {
-          appContainer.style.setProperty("--sidebar-width", `${nextWidth}px`);
-        }
+        if (sideRafId) return;
+        sideRafId = requestAnimationFrame(() => {
+          sideRafId = null;
+          const nextWidth = clamp(startWidth + (ev.clientX - startX), 160, 320);
+          if (appContainer) {
+            appContainer.style.setProperty("--sidebar-width", `${nextWidth}px`);
+          }
+        });
       };
 
       const onUp = () => {
@@ -651,11 +659,16 @@ function setupPanelResizers() {
       document.body.style.userSelect = "none";
       document.body.style.cursor = "col-resize";
 
+      let prevRafId = null;
       const onMove = (ev) => {
-        const nextWidth = clamp(startWidth - (ev.clientX - startX), 220, 520);
-        if (appContainer) {
-          appContainer.style.setProperty("--preview-width", `${nextWidth}px`);
-        }
+        if (prevRafId) return;
+        prevRafId = requestAnimationFrame(() => {
+          prevRafId = null;
+          const nextWidth = clamp(startWidth - (ev.clientX - startX), 220, 520);
+          if (appContainer) {
+            appContainer.style.setProperty("--preview-width", `${nextWidth}px`);
+          }
+        });
       };
 
       const onUp = () => {
@@ -693,12 +706,18 @@ function setupEventListeners() {
   setupPanelResizers();
   updateResponsiveColumns();
   window.addEventListener("blur", closeAllMenus);
+  let resizeRafId = null;
   window.addEventListener("resize", () => {
-    if (fileListLeft) updateGroupHeaderStacking(fileListLeft);
-    if (splitViewEnabled && fileListRight) {
-      updateGroupHeaderStacking(fileListRight);
-    }
-    updateResponsiveColumns();
+    if (resizeRafId) return;
+    resizeRafId = requestAnimationFrame(() => {
+      resizeRafId = null;
+      if (window.innerWidth > 800) closeSidebar();
+      if (fileListLeft) updateGroupHeaderStacking(fileListLeft);
+      if (splitViewEnabled && fileListRight) {
+        updateGroupHeaderStacking(fileListRight);
+      }
+      updateResponsiveColumns();
+    });
   });
 
   setupQuickAccess();

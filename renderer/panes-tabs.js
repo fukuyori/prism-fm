@@ -190,6 +190,7 @@ function loadFullPreferences() {
   thumbnailSize = readLocalStorageNumber("thumbnailSize", thumbnailSize);
   updateThumbnailSizeCSS();
   viewSettingsCache = readLocalStorageJson("folderViewSettings", {});
+  visibleColumns = readLocalStorageJson("visibleColumns", visibleColumns);
   restoreFolderSizeCache(readLocalStorageJson("folderSizeCache", {}));
 }
 
@@ -446,7 +447,6 @@ function renderPane(pane) {
   sortAscending = paneSettings.sortAscending;
   groupBy = paneSettings.groupBy;
   viewMode = paneSettings.viewMode;
-  visibleColumns = paneSettings.visibleColumns;
   const listContainer = pane.fileListEl
     ? pane.fileListEl.closest(".file-list-container")
     : null;
@@ -708,10 +708,18 @@ async function init() {
   try {
     await waitForFileManager();
     document.body.classList.add(`platform-${window.fileManager.platform}`);
-    if (window.fileManager.platform === "linux") {
+    if (window.fileManager.platform !== "darwin") {
       document.getElementById("win-minimize-btn")?.addEventListener("click", () => window.fileManager.minimizeWindow());
       document.getElementById("win-maximize-btn")?.addEventListener("click", () => window.fileManager.maximizeWindow());
       document.getElementById("win-close-btn")?.addEventListener("click", () => window.fileManager.closeWindow());
+      const maxBtn = document.getElementById("win-maximize-btn");
+      if (maxBtn) {
+        window.fileManager.onWindowMaximized((isMaximized) => {
+          maxBtn.innerHTML = isMaximized
+            ? '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="2.5" width="6" height="6"/><polyline points="2.5,2.5 2.5,0.5 8.5,0.5 8.5,6.5 6.5,6.5"/></svg>'
+            : '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="1.5" y="1.5" width="7" height="7"/></svg>';
+        });
+      }
     }
     const { isPicker, pickerOptions } = await resolveStartupContext();
     if (isPicker) {
