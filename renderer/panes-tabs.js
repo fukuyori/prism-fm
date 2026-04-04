@@ -707,6 +707,7 @@ async function init() {
 
   try {
     await waitForFileManager();
+    document.body.classList.add(`platform-${window.fileManager.platform}`);
     const { isPicker, pickerOptions } = await resolveStartupContext();
     if (isPicker) {
       document.documentElement.classList.add("picker-mode-early");

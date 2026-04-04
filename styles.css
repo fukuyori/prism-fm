@@ -303,9 +303,19 @@ body {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     padding: 4px 8px;
+    -webkit-app-region: drag;
     gap: 4px;
     min-height: 36px;
     overflow-x: auto;
+}
+
+body.platform-darwin .tab-bar {
+    padding-left: 78px;
+}
+
+body.platform-linux .tab-bar,
+body.platform-win32 .tab-bar {
+    padding-right: 140px;
 }
 
 .tab-bar:empty {
@@ -320,6 +330,7 @@ body {
     background: var(--bg-tertiary);
     border-radius: 6px;
     cursor: pointer;
+    -webkit-app-region: no-drag;
     max-width: 240px;
     min-width: 80px;
     border: 1px solid transparent;

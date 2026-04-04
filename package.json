@@ -1,6 +1,6 @@
 {
   "name": "prism-fm",
-  "version": "1.0.0-spumoni.1",
+  "version": "1.0.0-spumoni.2",
   "description": "A modern, transparent file manager for Linux with glassmorphism UI",
   "main": "main.js",
   "scripts": {
