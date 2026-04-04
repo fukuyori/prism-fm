@@ -1,3 +1,31 @@
+var _isWin = null;
+function _checkWin() {
+  if (_isWin === null) _isWin = window.fileManager && window.fileManager.platform === "win32";
+  return _isWin;
+}
+
+function localParsePath(p) {
+  const str = String(p || "");
+  const sep = _checkWin() ? /[\\/]/ : /\//;
+  const parts = str.split(sep);
+  const base = parts.pop() || "";
+  const dotIdx = base.lastIndexOf(".");
+  return {
+    dir: parts.join(_checkWin() ? "\\" : "/"),
+    base,
+    name: dotIdx > 0 ? base.substring(0, dotIdx) : base,
+    ext: dotIdx > 0 ? base.substring(dotIdx) : "",
+  };
+}
+
+function localJoinPaths(...segments) {
+  const sep = _checkWin() ? "\\" : "/";
+  return segments
+    .filter(Boolean)
+    .join(sep)
+    .replace(_checkWin() ? /[\\/]+/g : /\/+/g, sep);
+}
+
 function normalizePathForCompare(p) {
   if (!p) return "";
   let n = String(p);

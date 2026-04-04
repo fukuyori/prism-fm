@@ -161,7 +161,7 @@ function getSearchTerm() {
 function filterItems(items, searchTerm) {
   let filtered = items;
   if (!showHidden) {
-    filtered = filtered.filter((item) => !item.name.startsWith("."));
+    filtered = filtered.filter((item) => !item.hidden);
   }
 
   if (pickerMode === "directory") {
@@ -339,26 +339,21 @@ function setupDragHandlers(element, item) {
     } else {
       draggedItems = [item.path];
     }
-    e.dataTransfer.effectAllowed = "copyMove";
-    e.dataTransfer.setData("text/plain", draggedItems.join("\n"));
-    e.dataTransfer.setData(
-      "application/x-file-manager-paths",
-      JSON.stringify(draggedItems),
-    );
     element.classList.add("dragging");
+    e.preventDefault();
+    window.fileManager.startDrag(draggedItems);
   });
+}
 
-  element.addEventListener("dragend", () => {
-    isDragging = false;
-    draggedItems = [];
-    dragSourcePaneId = null;
-    element.classList.remove("dragging");
-    document
-      .querySelectorAll(".drop-target")
-      .forEach((el) => el.classList.remove("drop-target"));
-    clearInterval(dragScrollInterval);
-    dragScrollInterval = null;
-  });
+function cleanupDragState() {
+  isDragging = false;
+  draggedItems = [];
+  dragSourcePaneId = null;
+  document
+    .querySelectorAll(".drop-target, .dragging")
+    .forEach((el) => el.classList.remove("drop-target", "dragging"));
+  clearInterval(dragScrollInterval);
+  dragScrollInterval = null;
 }
 
 function setupFolderDropHandlers(element, item) {
@@ -406,21 +401,19 @@ function setupFolderDropHandlers(element, item) {
       setActivePane(paneId, { skipRender: true });
     }
 
-    if (draggedItems.length > 0) {
+    if (isDragging && draggedItems.length > 0) {
       const isCopy = e.ctrlKey;
-      await handleFileDrop(
-        draggedItems,
-        item.path,
-        isCopy,
-        dragSourcePaneId,
-        activePaneId,
-      );
+      const paths = [...draggedItems];
+      const srcPane = dragSourcePaneId;
+      cleanupDragState();
+      await handleFileDrop(paths, item.path, isCopy, srcPane, activePaneId);
       return;
     }
 
     if (e.dataTransfer.files.length > 0) {
       const externalPaths = Array.from(e.dataTransfer.files).map((f) => f.path);
-      await handleFileDrop(externalPaths, item.path, true, null, activePaneId);
+      cleanupDragState();
+      await handleFileDrop(externalPaths, item.path, e.ctrlKey, null, activePaneId);
     }
   });
 }
@@ -462,13 +455,6 @@ function renderFileItem(item) {
     iconContent,
     shouldObserveThumbnail,
   );
-
-  if (shouldObserveThumbnail) {
-    const iconEl = element.querySelector(".file-icon");
-    if (iconEl) {
-      observeThumbnail(iconEl);
-    }
-  }
 
   setupDragHandlers(element, item);
   if (item.isDirectory) setupFolderDropHandlers(element, item);
@@ -1133,7 +1119,7 @@ function updateStatusBar() {
   if (itemCountEl) {
     const visibleCount = showHidden
       ? currentItems.length
-      : currentItems.filter((item) => !item.name.startsWith(".")).length;
+      : currentItems.filter((item) => !item.hidden).length;
     itemCountEl.textContent = `${visibleCount} items`;
   }
   if (selectedCountEl) {

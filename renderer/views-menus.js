@@ -107,12 +107,10 @@ function renderViewMenu(type) {
 
   const toggleColumn = (col) => {
     visibleColumns[col] = !visibleColumns[col];
-    const container =
-      splitViewEnabled && panes[activePaneId]?.fileListEl
-        ? panes[activePaneId].fileListEl.closest(".file-list-container")
-        : null;
-    applyColumnVisibility(container, visibleColumns);
-    saveCurrentViewSettings();
+    applyColumnVisibility(null, visibleColumns);
+    try {
+      localStorage.setItem("visibleColumns", JSON.stringify(visibleColumns));
+    } catch { }
   };
 
   if (type === "view") {

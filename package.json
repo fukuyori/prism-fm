@@ -1,15 +1,25 @@
 {
   "name": "prism-fm",
-  "version": "1.0.0-spumoni.3",
+  "version": "1.0.0-spumoni.3.1",
   "description": "A modern, transparent file manager for Linux with glassmorphism UI",
   "main": "main.js",
   "scripts": {
     "start": "./scripts/run-electron.sh",
     "dev": "PRISM_DEVTOOLS=1 ./scripts/run-electron.sh --enable-logging",
     "portal": "node portal-service.js",
-    "build": "electron-builder --linux",
+    "build": "electron-builder",
+    "build:dir": "electron-builder --dir",
+    "build:pack": "electron-builder --dir",
+    "build:installer": "electron-builder --prepackaged",
     "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac"
+    "build:win:pack": "electron-builder --win --dir",
+    "build:win:installer": "electron-builder --win --prepackaged dist/win-unpacked",
+    "build:mac": "electron-builder --mac",
+    "build:mac:pack": "electron-builder --mac --dir",
+    "build:mac:installer": "electron-builder --mac --prepackaged \"dist/mac$([ \"$(uname -m)\" = arm64 ] && echo -arm64)\"",
+    "build:linux": "electron-builder --linux",
+    "build:linux:pack": "electron-builder --linux --dir",
+    "build:linux:installer": "electron-builder --linux --prepackaged dist/linux-unpacked"
   },
   "repository": {
     "type": "git",
@@ -106,6 +116,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico"
