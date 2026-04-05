@@ -713,6 +713,7 @@ async function init() {
       document.getElementById("win-minimize-btn")?.addEventListener("click", () => window.fileManager.minimizeWindow());
       document.getElementById("win-maximize-btn")?.addEventListener("click", () => window.fileManager.maximizeWindow());
       document.getElementById("win-close-btn")?.addEventListener("click", () => window.fileManager.closeWindow());
+
       const maxBtn = document.getElementById("win-maximize-btn");
       if (maxBtn) {
         window.fileManager.onWindowMaximized((isMaximized) => {
@@ -722,6 +723,53 @@ async function init() {
         });
       }
     }
+
+    // Tab bar drag-to-move and double-click-to-maximize
+    if (window.fileManager.platform !== "darwin") {
+      const dragTarget = document.querySelector(".tab-bar-wrapper");
+      if (dragTarget) {
+        let lastDownTime = 0;
+        let dragging = false;
+        let startScreenX = 0;
+        let startScreenY = 0;
+
+        dragTarget.addEventListener("mousedown", (e) => {
+          if (e.button !== 0) return;
+          if (e.target.closest("button, .tab, .tab-close, .window-control-btn")) return;
+
+          const now = Date.now();
+          if (now - lastDownTime < 300) {
+            window.fileManager.maximizeWindow();
+            lastDownTime = 0;
+            return;
+          }
+          lastDownTime = now;
+
+          dragging = true;
+          startScreenX = e.screenX;
+          startScreenY = e.screenY;
+
+          const onMouseMove = (me) => {
+            if (!dragging) return;
+            const dx = me.screenX - startScreenX;
+            const dy = me.screenY - startScreenY;
+            startScreenX = me.screenX;
+            startScreenY = me.screenY;
+            window.fileManager.windowMoveBy(dx, dy);
+          };
+
+          const onMouseUp = () => {
+            dragging = false;
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+          };
+
+          document.addEventListener("mousemove", onMouseMove);
+          document.addEventListener("mouseup", onMouseUp);
+        });
+      }
+    }
+
     const { isPicker, pickerOptions } = await resolveStartupContext();
     if (isPicker) {
       document.documentElement.classList.add("picker-mode-early");

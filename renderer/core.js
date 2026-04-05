@@ -1172,6 +1172,8 @@ async function buildThemeModal() {
   themeModalBody.innerHTML = "";
   themeControlMap.clear();
 
+  themeModalBody.appendChild(buildTerminalSection());
+
   const presetSection = createThemeSection("Theme Presets");
   const presetGrid = document.createElement("div");
   presetGrid.className = "theme-preset-grid";
@@ -1372,6 +1374,112 @@ async function buildThemeModal() {
     );
     themeModalBody.appendChild(walSection);
   }
+}
+
+var TERMINAL_PRESETS = [
+  { id: "system", name: "System Default", command: "", args: "" },
+  { id: "wt", name: "Windows Terminal", command: "wt.exe", args: "-d \"{dir}\"" },
+  { id: "powershell", name: "PowerShell (Windows)", command: "powershell.exe", args: "-NoExit -Command \"cd '{dir}'\"" },
+  { id: "pwsh", name: "PowerShell 7 (pwsh)", command: "pwsh.exe", args: "-NoExit -Command \"cd '{dir}'\"" },
+  { id: "cmd", name: "Command Prompt", command: "cmd.exe", args: "/k \"cd /d {dir}\"" },
+  { id: "terminal-app", name: "Terminal.app", command: "open", args: "-a Terminal \"{dir}\"" },
+  { id: "iterm2", name: "iTerm2", command: "open", args: "-a iTerm \"{dir}\"" },
+  { id: "kitty", name: "kitty", command: "kitty", args: "--directory \"{dir}\"" },
+  { id: "alacritty", name: "Alacritty", command: "alacritty", args: "--working-directory \"{dir}\"" },
+  { id: "gnome-terminal", name: "GNOME Terminal", command: "gnome-terminal", args: "--working-directory=\"{dir}\"" },
+  { id: "wezterm", name: "WezTerm", command: "wezterm", args: "start --cwd \"{dir}\"" },
+  { id: "custom", name: "Custom", command: "", args: "" },
+];
+
+function getTerminalSettings() {
+  try {
+    const saved = localStorage.getItem("terminalSettings");
+    if (saved) return JSON.parse(saved);
+  } catch { }
+  return { preset: "system", command: "", args: "" };
+}
+
+function saveTerminalSettings(settings) {
+  try {
+    localStorage.setItem("terminalSettings", JSON.stringify(settings));
+  } catch { }
+}
+
+function buildTerminalSection() {
+  const section = createThemeSection("Terminal");
+  const settings = getTerminalSettings();
+
+  const select = document.createElement("select");
+  select.className = "theme-select";
+  TERMINAL_PRESETS.forEach((preset) => {
+    const option = document.createElement("option");
+    option.value = preset.id;
+    option.textContent = preset.name;
+    select.appendChild(option);
+  });
+  select.value = settings.preset || "system";
+
+  const commandInput = document.createElement("input");
+  commandInput.type = "text";
+  commandInput.className = "theme-text-input";
+  commandInput.placeholder = "e.g. wt.exe";
+  commandInput.value = settings.command || "";
+
+  const argsInput = document.createElement("input");
+  argsInput.type = "text";
+  argsInput.className = "theme-text-input";
+  argsInput.placeholder = "e.g. -d \"{dir}\"";
+  argsInput.value = settings.args || "";
+
+  const customFields = document.createElement("div");
+  customFields.className = "terminal-custom-fields";
+
+  const updateVisibility = () => {
+    const isCustom = select.value === "custom";
+    customFields.style.display = isCustom ? "" : "none";
+    const preset = TERMINAL_PRESETS.find((p) => p.id === select.value);
+    if (!isCustom && preset) {
+      commandInput.value = preset.command;
+      argsInput.value = preset.args;
+    }
+    saveTerminalSettings({
+      preset: select.value,
+      command: commandInput.value,
+      args: argsInput.value,
+    });
+  };
+
+  select.addEventListener("change", updateVisibility);
+  commandInput.addEventListener("input", () => {
+    saveTerminalSettings({ preset: "custom", command: commandInput.value, args: argsInput.value });
+    select.value = "custom";
+  });
+  argsInput.addEventListener("input", () => {
+    saveTerminalSettings({ preset: "custom", command: commandInput.value, args: argsInput.value });
+    select.value = "custom";
+  });
+
+  const cmdLabel = document.createElement("div");
+  cmdLabel.className = "theme-hint";
+  cmdLabel.textContent = "Command";
+  cmdLabel.style.marginBottom = "4px";
+
+  const argsLabel = document.createElement("div");
+  argsLabel.className = "theme-hint";
+  argsLabel.textContent = "Arguments ({dir} = working directory)";
+  argsLabel.style.marginBottom = "4px";
+  argsLabel.style.marginTop = "8px";
+
+  customFields.appendChild(cmdLabel);
+  customFields.appendChild(commandInput);
+  customFields.appendChild(argsLabel);
+  customFields.appendChild(argsInput);
+
+  section.appendChild(createThemeRow("Terminal Emulator", "Choose which terminal to open from the toolbar and context menu.", select));
+  section.appendChild(customFields);
+  updateVisibility();
+
+  return section;
 }
 
 function trimCache(cacheMap, maxEntries) {

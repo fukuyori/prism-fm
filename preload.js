@@ -18,6 +18,7 @@ const fileManagerApi = {
   openFile: invoke("open-file"),
   showInFolder: invoke("show-in-folder"),
   openTerminal: invoke("open-terminal"),
+  openTerminalCustom: invoke("open-terminal-custom"),
   deleteItem: invoke("delete-item"),
   deleteItemSudo: invoke("delete-item-sudo"),
   trashItem: invoke("trash-item"),
@@ -57,6 +58,8 @@ const fileManagerApi = {
   showOpenDialog: invoke("show-open-dialog"),
   showSaveDialog: invoke("show-save-dialog"),
 
+  windowStartDrag: send("window-start-drag"),
+  windowMoveBy: send("window-move-by"),
   minimizeWindow: send("window-minimize"),
   maximizeWindow: send("window-maximize"),
   closeWindow: send("window-close"),

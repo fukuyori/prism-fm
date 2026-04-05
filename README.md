@@ -10,6 +10,13 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
+### v1.0.0-spumoni.3.5
+
+- Terminal settings in Customize modal (11 presets including pwsh, Windows Terminal, kitty, etc.)
+- Terminal toolbar button and "Open in Terminal" in all context menus
+- Title bar double-click to maximize, window size/position persistence
+- Compact row heights, Split View moved to toolbar, themed dropdown styling
+
 ### v1.0.0-spumoni.3.4
 
 - File size column right-aligned with thousands separator

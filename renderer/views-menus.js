@@ -140,13 +140,6 @@ function renderViewMenu(type) {
         rerender();
       }),
     );
-    if (!pickerMode) {
-      viewMenu.appendChild(
-        createOption("Split View", splitViewEnabled, () => {
-          setSplitViewEnabled(!splitViewEnabled);
-        }),
-      );
-    }
     if (viewMode === "detailed") {
       viewMenu.appendChild(createHeader("Columns"));
       viewMenu.appendChild(
@@ -334,7 +327,7 @@ function renderSettingsMenu() {
   `;
   settingsMenu.appendChild(appearanceHeader);
   settingsMenu.appendChild(
-    createOption("Customize Colors...", false, () => {
+    createOption("Customize...", false, () => {
       openThemeCustomizer();
     }),
   );
@@ -530,6 +523,13 @@ function buildBackgroundMenuItems() {
     },
   );
 
+  items.push({ type: "separator" });
+  items.push({
+    label: "Open in Terminal",
+    icon: CONTEXT_MENU_ICONS.terminal,
+    onClick: () => openTerminalInDir(currentPath),
+  });
+
   if (contextPinTargetPath) {
     items.push({ type: "separator" });
     items.push({
@@ -654,10 +654,19 @@ function buildItemMenuItems() {
       itemMenu.push({
         label: "Open in Terminal",
         icon: CONTEXT_MENU_ICONS.terminal,
-        onClick: () => window.fileManager.openTerminal(p),
+        onClick: () => openTerminalInDir(p),
       });
-      itemMenu.push({ type: "separator" });
+    } else if (it && it.isFile) {
+      itemMenu.push({
+        label: "Open in Terminal",
+        icon: CONTEXT_MENU_ICONS.terminal,
+        onClick: () => {
+          const dir = localParsePath(p).dir;
+          openTerminalInDir(dir || currentPath);
+        },
+      });
     }
+    itemMenu.push({ type: "separator" });
   }
 
   if (contextPinTargetPath) {
