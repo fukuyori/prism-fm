@@ -364,7 +364,7 @@ function showContextMenu(x, y) {
     x = window.innerWidth - rect.width - 10;
   }
   if (y + rect.height > window.innerHeight) {
-    y = window.innerHeight - rect.height - 10;
+    y = Math.max(10, window.innerHeight - rect.height - 10);
   }
 
   contextMenu.style.left = x + "px";
@@ -631,8 +631,19 @@ function buildItemMenuItems() {
       icon: CONTEXT_MENU_ICONS.rename,
       onClick: () => renameSelected(),
     },
-    { type: "separator" },
   ];
+
+  itemMenu.push({ type: "separator" });
+  itemMenu.push({
+    label: "Properties",
+    icon: CONTEXT_MENU_ICONS.info,
+    onClick: () => {
+      const sel = Array.from(selectedItems);
+      if (sel.length > 0) showPropertiesModal(sel[0]);
+    },
+  });
+
+  itemMenu.push({ type: "separator" });
 
   if (selectedItems.size > 0) {
     itemMenu.push({
@@ -737,6 +748,7 @@ function buildItemMenuItems() {
     danger: true,
     onClick: () => deleteSelected(),
   });
+
 
   return itemMenu;
 }

@@ -1,3 +1,5 @@
+var closeSidebar = () => {};
+
 function setupNavigationButtons() {
   document.getElementById("back-btn").addEventListener("click", goBack);
   document.getElementById("forward-btn").addEventListener("click", goForward);
@@ -41,7 +43,7 @@ function setupSidebarToggle() {
     sidebarBackdrop.classList.toggle("visible", isOpen);
   };
 
-  const closeSidebar = () => {
+  closeSidebar = () => {
     sidebar.classList.remove("open");
     sidebarBackdrop.classList.remove("visible");
   };
@@ -320,20 +322,24 @@ function setupContextMenuHandlers() {
     showContextMenu(e.clientX, e.clientY);
   };
 
-  // Use document-level listener to catch right-clicks on file lists,
-  // because container-level listeners may not fire reliably on all platforms.
+  let contextHandled = false;
   document.addEventListener("mouseup", (e) => {
     if (e.button !== 2) return;
     const listEl = e.target.closest(".file-list");
     if (!listEl) return;
+    contextHandled = true;
     const paneId = listEl.dataset.pane;
     openListContextMenu(e, listEl, paneId);
   });
 
   document.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
     const listEl = e.target.closest(".file-list");
     if (!listEl) return;
+    e.preventDefault();
+    if (contextHandled) {
+      contextHandled = false;
+      return;
+    }
     const paneId = listEl.dataset.pane;
     openListContextMenu(e, listEl, paneId);
   });

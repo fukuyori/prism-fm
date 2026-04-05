@@ -10,6 +10,13 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
+### v1.0.0-spumoni.3.6
+
+- Properties dialog with OS-specific info (Windows attributes, POSIX owner/group/permissions)
+- Click-to-copy for file name and path in Properties
+- Context menu scrollable when exceeding screen height
+- Fixed Windows hidden file detection and closeSidebar error
+
 ### v1.0.0-spumoni.3.5
 
 - Terminal settings in Customize modal (11 presets including pwsh, Windows Terminal, kitty, etc.)
@@ -64,6 +71,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 - **Drag and Drop**: Drag files out to external apps (native drag). Drop files from external apps to copy into the current directory. Within Prism FM, drag to move (hold Ctrl to copy). Drag and drop into/from archives is not supported.
 - **Preview System**: Integrated image and text previews.
 - **Tagging**: Essential file organization with color-coded tags.
+- **Properties**: File/folder properties dialog with OS-specific info (Windows attributes, POSIX permissions), click-to-copy for name and path.
+- **Terminal Integration**: Configurable terminal emulator with 11 presets; open from toolbar or context menu.
 - **Theme Customizer**: Built-in theme editor with presets (Default Glass, Nord Frost, Amber Glow, Forest Mist, Light Frost) and Wal theme import.
 - **XDG Integration**: Functions as a system-wide directory picker (Linux).
 

@@ -2,6 +2,24 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [1.0.0-spumoni.3.6] - 2026-04-05
+
+### Added
+
+- **Properties dialog** -- Right-click context menu "Properties" shows file/folder details in a modal (Name, Type, MIME, Location, Size, Created, Modified, Accessed)
+- **OS-specific properties** -- Windows: file attributes (Read-only, Hidden, System, Archive); macOS/Linux: owner, group, permissions (rwxr-xr-x)
+- **Folder item count** -- Properties for folders shows number of direct children instead of recursive size calculation
+- **Symlink target** -- Properties shows link target path for symbolic links
+- **Click to copy** -- Name, Location, and Link Target values in Properties are clickable to copy to clipboard
+- **Context menu scroll** -- Context menu supports scrolling when items exceed screen height
+
+### Fixed
+
+- **Windows hidden file detection** -- `dir /ah /b` now uses `shell: "cmd.exe"` to work correctly from Git Bash / non-cmd environments
+- **closeSidebar not defined** -- Promoted from local `const` to global `var` so resize handler can access it
+- **Context menu duplication** -- Added dedup flag between `mouseup` and `contextmenu` listeners to prevent double rendering
+- **Properties layout shift** -- Fixed table column width with `table-layout: fixed` and `minWidth` preservation during "Copied!" feedback
+
 ## [1.0.0-spumoni.3.5] - 2026-04-05
 
 ### Added

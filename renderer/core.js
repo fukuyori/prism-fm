@@ -565,6 +565,7 @@ var CONTEXT_MENU_ICONS = {
   terminal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
   extract: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21,8 21,21 3,21 3,8"/><rect x="1" y="3" width="22" height="5"/><path d="M12 11v6"/><path d="M9 14l3 3 3-3"/></svg>`,
   compress: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21,8 21,21 3,21 3,8"/><rect x="1" y="3" width="22" height="5"/><path d="M12 17v-6"/><path d="M9 14l3-3 3 3"/></svg>`,
+  info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
 };
 
 var TAG_HEX = {
@@ -1561,6 +1562,115 @@ function showDeleteChoiceModal(title, message) {
     dialog.querySelector("#fm-del-cancel").onclick = () => finish("cancel");
     dialog.querySelector("#fm-del-trash").onclick = () => finish("trash");
     dialog.querySelector("#fm-del-perm").onclick = () => finish("permanent");
+  });
+}
+
+async function showPropertiesModal(itemPath) {
+  let result;
+  try {
+    result = await window.fileManager.getItemInfo(itemPath);
+  } catch (e) {
+    showNotification("Failed to get properties: " + e.message, "error");
+    return;
+  }
+  if (!result || !result.success) {
+    showNotification(result?.error || "Failed to get properties", "error");
+    return;
+  }
+  const info = result.info;
+  const formatSize = (bytes) => {
+    if (bytes < 0) return "—";
+    if (bytes === 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    const val = bytes / Math.pow(1024, i);
+    return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]} (${bytes.toLocaleString()} bytes)`;
+  };
+  const formatDate = (d) => {
+    if (!d) return "—";
+    const dt = new Date(d);
+    if (isNaN(dt)) return "—";
+    return dt.toLocaleString();
+  };
+  const formatPerms = (mode) => {
+    if (mode == null) return "—";
+    return "0" + (mode & 0o7777).toString(8);
+  };
+
+  let typeLabel = info.isDirectory ? "Folder" : "File";
+  if (info.isSymlink) typeLabel += " (Symbolic Link)";
+  if (info.mimeType && info.mimeType !== "inode/directory") {
+    typeLabel += ` — ${info.mimeType}`;
+  }
+
+  const rows = [
+    ["Name", info.name],
+    ["Type", typeLabel],
+    ["Location", info.path],
+  ];
+  if (info.isSymlink && info.symlinkTarget) {
+    rows.push(["Link Target", info.symlinkTarget]);
+  }
+  if (!info.isDirectory) {
+    rows.push(["Size", formatSize(info.size)]);
+  }
+  if (info.isDirectory && info.fileCount != null) {
+    rows.push(["Contains", `${info.fileCount} item(s)`]);
+  }
+  rows.push(["Created", formatDate(info.created)]);
+  rows.push(["Modified", formatDate(info.modified)]);
+  rows.push(["Accessed", formatDate(info.accessed)]);
+
+  if (info.attributes) {
+    rows.push(["Attributes", info.attributes]);
+  }
+  if (info.owner) {
+    rows.push(["Owner", info.owner]);
+  }
+  if (info.group) {
+    rows.push(["Group", info.group]);
+  }
+  if (info.permissionsString) {
+    rows.push(["Permissions", `${info.permissionsString} (${formatPerms(info.permissions)})`]);
+  } else {
+    rows.push(["Permissions", formatPerms(info.permissions)]);
+  }
+
+  const copyableFields = new Set(["Name", "Location", "Link Target"]);
+  const tableHtml = rows
+    .map(([label, value]) => {
+      const valHtml = copyableFields.has(label)
+        ? `<span class="props-copyable" data-copy="${escapeHtmlAttr(value)}" title="Click to copy">${escapeHtml(value)}</span>`
+        : escapeHtml(value);
+      return `<tr><td style="padding:4px 12px 4px 0; color:var(--text-secondary); white-space:nowrap; vertical-align:top;">${escapeHtml(label)}</td><td style="padding:4px 0; word-break:break-all;">${valHtml}</td></tr>`;
+    })
+    .join("");
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed; inset:0; background:var(--modal-backdrop); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; z-index:6000;";
+  const dialog = document.createElement("div");
+  dialog.style.cssText = "width:480px; max-width:90vw; max-height:80vh; overflow-y:auto; background:var(--bg-overlay); border:1px solid var(--border-color); border-radius:14px; padding:16px; color:var(--text-primary);";
+  dialog.innerHTML = `
+    <div style="font-weight:700; margin-bottom:12px; font-size:14px;">Properties</div>
+    <table style="font-size:13px; width:100%; border-collapse:collapse; table-layout:fixed;"><col style="width:100px"><col>${tableHtml}</table>
+    <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+      <button id="fm-props-close" style="padding:8px 16px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-tertiary); color:var(--text-primary); cursor:pointer;">Close</button>
+    </div>
+  `;
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  const close = () => document.body.removeChild(overlay);
+  dialog.querySelector("#fm-props-close").onclick = close;
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  dialog.querySelectorAll(".props-copyable").forEach((el) => {
+    el.addEventListener("click", () => {
+      navigator.clipboard.writeText(el.dataset.copy).then(() => {
+        const orig = el.textContent;
+        el.style.minWidth = el.offsetWidth + "px";
+        el.textContent = "Copied!";
+        setTimeout(() => { el.textContent = orig; el.style.minWidth = ""; }, 1000);
+      });
+    });
   });
 }
 
