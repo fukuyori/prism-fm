@@ -415,8 +415,8 @@ var PREVIEW_WIDTH_STORAGE_KEY = "previewWidthV1";
 
 var COLUMN_DEFAULTS = {
   size: 100,
-  modified: 140,
-  added: 140,
+  modified: 170,
+  added: 170,
 };
 
 var COLUMN_MIN = {
@@ -481,35 +481,39 @@ function scheduleOpsRender() {
 }
 
 function setupThumbnailObserver() {
-  clearThumbnailObserver();
   if (viewMode !== "thumbnail") return;
 
-  thumbnailObserver = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        const iconEl = entry.target;
-        const filePath = iconEl.dataset.thumbPath;
-        if (!filePath) continue;
-        thumbnailObserver.unobserve(iconEl);
+  if (!thumbnailObserver) {
+    thumbnailObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const iconEl = entry.target;
+          const filePath = iconEl.dataset.thumbPath;
+          if (!filePath) continue;
+          thumbnailObserver.unobserve(iconEl);
 
-        const img = new Image();
-        img.onerror = () => {
-          console.error("Thumbnail load failed:", filePath, img.src);
-        };
-        img.onload = () => {
-          iconEl.textContent = "";
-          iconEl.appendChild(img);
-        };
-        img.src = "thumb://" + encodeURIComponent(filePath);
-      }
-    },
-    { root: null, rootMargin: "200px", threshold: 0 },
-  );
+          const img = new Image();
+          img.onerror = () => {
+            console.error("Thumbnail load failed:", filePath, img.src);
+          };
+          img.onload = () => {
+            iconEl.textContent = "";
+            iconEl.appendChild(img);
+          };
+          img.src = "thumb://" + encodeURIComponent(filePath);
+        }
+      },
+      { root: null, rootMargin: "200px", threshold: 0 },
+    );
+  }
 
-  const targets = document.querySelectorAll("[data-thumb-path]");
+  const targets = (fileList || document).querySelectorAll("[data-thumb-path]");
   for (const el of targets) {
-    thumbnailObserver.observe(el);
+    if (!el._thumbObserved) {
+      el._thumbObserved = true;
+      thumbnailObserver.observe(el);
+    }
   }
 }
 
@@ -1562,6 +1566,79 @@ function showDeleteChoiceModal(title, message) {
     dialog.querySelector("#fm-del-cancel").onclick = () => finish("cancel");
     dialog.querySelector("#fm-del-trash").onclick = () => finish("trash");
     dialog.querySelector("#fm-del-perm").onclick = () => finish("permanent");
+  });
+}
+
+function initFileConflictHandler() {
+  if (!window.fileManager.onFileConflict) return;
+  window.fileManager.onFileConflict((data) => {
+    showFileConflictModal(data.fileName).then((result) => {
+      window.fileManager.resolveFileConflict({
+        operationId: data.resolveId,
+        action: result.action,
+        applyToAll: result.applyToAll,
+      });
+    });
+  });
+}
+
+function showFileConflictModal(fileName) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: var(--modal-backdrop);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 6000;
+    `;
+
+    const dialog = document.createElement("div");
+    dialog.style.cssText = `
+      width: 460px;
+      max-width: calc(100vw - 32px);
+      background: var(--bg-overlay);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+      color: var(--text-primary);
+    `;
+
+    dialog.innerHTML = `
+      <div style="font-size: 14px; font-weight: 700; margin-bottom: 10px;">File Already Exists</div>
+      <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4;">
+        "<strong>${escapeHtmlAttr(fileName)}</strong>" already exists in the destination. What would you like to do?
+      </div>
+      <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; cursor: pointer;">
+        <input type="checkbox" id="fm-conflict-all"> Apply to all
+      </label>
+      <div style="display:flex; justify-content:flex-end; gap:8px; flex-wrap: wrap;">
+        <button id="fm-conflict-cancel" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-tertiary); color: var(--text-primary); cursor: pointer;">Cancel</button>
+        <button id="fm-conflict-skip" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-tertiary); color: var(--text-primary); cursor: pointer;">Skip</button>
+        <button id="fm-conflict-keep" style="padding: 8px 12px; border-radius: 8px; border: none; background: var(--accent-color); color: white; cursor: pointer;">Keep Both</button>
+        <button id="fm-conflict-replace" style="padding: 8px 12px; border-radius: 8px; border: none; background: var(--danger-color); color: white; cursor: pointer;">Replace</button>
+      </div>
+    `;
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const finish = (action) => {
+      const applyToAll = dialog.querySelector("#fm-conflict-all").checked;
+      document.body.removeChild(overlay);
+      resolve({ action, applyToAll });
+    };
+
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) finish("cancel"); });
+    dialog.querySelector("#fm-conflict-cancel").onclick = () => finish("cancel");
+    dialog.querySelector("#fm-conflict-skip").onclick = () => finish("skip");
+    dialog.querySelector("#fm-conflict-keep").onclick = () => finish("keep-both");
+    dialog.querySelector("#fm-conflict-replace").onclick = () => finish("replace");
   });
 }
 

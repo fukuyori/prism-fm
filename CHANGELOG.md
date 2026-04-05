@@ -2,6 +2,27 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [1.0.0-spumoni.3.7] - 2026-04-05
+
+### Added
+- **PDF thumbnails** -- PDF first-page thumbnails in Thumbnail view and Preview Pane via `thumb://` protocol; macOS uses `qlmanage`, Linux uses `pdftoppm` (poppler-utils)
+- **Video thumbnails** -- Video first-frame thumbnails in Thumbnail view and Preview Pane; macOS uses `qlmanage`, Linux uses `ffmpegthumbnailer` with `ffmpeg` fallback
+- **Thumbnail caching** -- Generated thumbnails cached in `$TMPDIR/prism-thumbs/` with SHA256-based filenames; up to 500 entries
+- **File conflict dialog** -- Copy/move operations now detect existing files at destination and show a modal with Replace, Skip, Keep Both (auto-rename), and Cancel options; "Apply to all" checkbox for batch operations
+- **Preview Pane toolbar button** -- Toggle button added to toolbar (left of Split View button); removed from Settings menu
+- **Hidden file styling** -- Hidden files (dot-prefix or OS hidden attribute) displayed at 65% opacity
+- **Reset All Folder Settings** -- New option in Settings menu to clear all per-folder view settings (sort, group, view mode)
+
+### Fixed
+- **Linux drag-out** -- Removed `e.preventDefault()` from `dragstart` handler that was blocking HTML5 drag; now uses both HTML5 drag data and Electron `startDrag` for cross-platform compatibility
+- **Date column width** -- `COLUMN_DEFAULTS` for Modified/Added increased from 140px to 170px to prevent date/time text wrapping; CSS and JS defaults synchronized
+- **Split View thumbnails** -- `setupThumbnailObserver` no longer recreates the IntersectionObserver on each call; reuses existing observer and scopes element search to current `fileList`
+- **PDF thumbnail collisions** -- Each `qlmanage` invocation uses a unique temp directory (`ql-<sha256>/`) to prevent filename collisions between concurrent PDF thumbnail generations
+
+### Changed
+- **Thumbnail generation unified** -- `generatePdfThumbnail` renamed to `generateThumbnail`; single function handles PDF, video, and extensible to other formats
+- **Tab bar draggable** -- Tab bar wrapper has `-webkit-app-region: drag` for window move and double-click maximize on macOS
+
 ## [1.0.0-spumoni.3.6] - 2026-04-05
 
 ### Added

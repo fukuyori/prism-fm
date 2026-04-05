@@ -45,22 +45,27 @@ async function renderPreviewItem(item) {
 
 
     if (fileType === fileTypes.video) {
+      const thumbSrc = "thumb://" + encodeURIComponent(item.path);
+      const info = await window.fileManager.getItemInfo(item.path);
+      const videoInfo = info?.success ? info.info : null;
       previewContent.innerHTML = `
-        <div class="preview-video-placeholder" style="margin-bottom: 16px; padding: 20px; text-align: center; background: var(--bg-secondary); border-radius: 8px;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48" style="opacity: 0.5;">
-            <polygon points="23,7 16,12 23,17 23,7"/>
-            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-          </svg>
-          <p style="margin-top: 10px; color: var(--text-muted);">Double-click to open in video player</p>
-        </div>
+        <img src="${escapeHtmlAttr(thumbSrc)}" alt="${escapeHtmlAttr(item.name)}" class="preview-image" style="margin-bottom: 16px; border-radius: 4px;" onerror="this.style.display='none'">
         <div class="preview-info">
           <div class="preview-info-item">
             <span class="preview-info-label">Name:</span>
             <span class="preview-info-value">${escapeHtml(item.name)}</span>
           </div>
           <div class="preview-info-item">
+            <span class="preview-info-label">Type:</span>
+            <span class="preview-info-value">${escapeHtml((item.extension || "Video").toUpperCase())}</span>
+          </div>
+          <div class="preview-info-item">
             <span class="preview-info-label">Size:</span>
-            <span class="preview-info-value">${formatSize(item.size || 0)}</span>
+            <span class="preview-info-value">${formatSize(videoInfo?.size || item.size || 0)}</span>
+          </div>
+          <div class="preview-info-item">
+            <span class="preview-info-label">Modified:</span>
+            <span class="preview-info-value">${formatDate(videoInfo?.modified || item.modified)}</span>
           </div>
           <div class="preview-info-item">
             <span class="preview-info-label">Path:</span>
@@ -200,6 +205,36 @@ async function renderPreviewItem(item) {
       return;
     }
 
+
+    if (fileType === fileTypes.pdf) {
+      const thumbSrc = "thumb://" + encodeURIComponent(item.path);
+      previewContent.innerHTML = `
+        <img src="${escapeHtmlAttr(thumbSrc)}" alt="${escapeHtmlAttr(item.name)}" class="preview-image" style="margin-bottom: 16px; background: white; border-radius: 4px;" onerror="this.style.display='none'">
+        <div class="preview-info">
+          <div class="preview-info-item">
+            <span class="preview-info-label">Name:</span>
+            <span class="preview-info-value">${escapeHtml(item.name)}</span>
+          </div>
+          <div class="preview-info-item">
+            <span class="preview-info-label">Type:</span>
+            <span class="preview-info-value">PDF</span>
+          </div>
+          <div class="preview-info-item">
+            <span class="preview-info-label">Size:</span>
+            <span class="preview-info-value">${formatSize(itemInfo?.size || item.size)}</span>
+          </div>
+          <div class="preview-info-item">
+            <span class="preview-info-label">Modified:</span>
+            <span class="preview-info-value">${formatDate(itemInfo?.modified || item.modified)}</span>
+          </div>
+          <div class="preview-info-item">
+            <span class="preview-info-label">Path:</span>
+            <span class="preview-info-value">${escapeHtml(item.path)}</span>
+          </div>
+        </div>
+      `;
+      return;
+    }
 
     const textExtensions = [
       ".txt",

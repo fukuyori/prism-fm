@@ -351,9 +351,120 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "thumb", privileges: { bypassCSP: true, supportFetchAPI: true } },
 ]);
 
+const os = require("os");
+const { promisify } = require("util");
+const crypto = require("crypto");
+
+const thumbCache = new Map();
+const THUMB_MAX_CACHE = 500;
+
+const VIDEO_EXTENSIONS = new Set([
+  ".mp4", ".mkv", ".webm", ".mov", ".avi", ".wmv", ".flv", ".m4v", ".ts", ".vob", ".ogv", ".3gp",
+]);
+
+const PDF_EXTENSIONS = new Set([".pdf"]);
+
+function isVideoFile(filePath) {
+  return VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+function isPdfFile(filePath) {
+  return PDF_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+async function generateThumbnail(filePath) {
+  const cached = thumbCache.get(filePath);
+  if (cached) {
+    try { await fs.access(cached); return cached; } catch { thumbCache.delete(filePath); }
+  }
+
+  const hash = crypto.createHash("sha256").update(filePath).digest("hex");
+  const thumbDir = path.join(os.tmpdir(), "prism-thumbs");
+  await fs.mkdir(thumbDir, { recursive: true });
+  const outPath = path.join(thumbDir, `${hash}.png`);
+
+  try {
+    await fs.access(outPath);
+    thumbCache.set(filePath, outPath);
+    return outPath;
+  } catch { }
+
+  const execFileAsync = promisify(require("child_process").execFile);
+  const isPdf = isPdfFile(filePath);
+  const isVideo = isVideoFile(filePath);
+
+  try {
+    if (process.platform === "darwin") {
+      // qlmanage handles PDF, video, and many other formats
+      const qlTmpDir = path.join(thumbDir, `ql-${hash}`);
+      await fs.mkdir(qlTmpDir, { recursive: true });
+      await execFileAsync("qlmanage", ["-t", "-s", "256", "-o", qlTmpDir, filePath], { timeout: 15000 });
+      const qlExpected = path.join(qlTmpDir, path.basename(filePath) + ".png");
+      try {
+        await fs.access(qlExpected);
+        await fs.rename(qlExpected, outPath);
+      } catch {
+        return null;
+      } finally {
+        fs.rm(qlTmpDir, { recursive: true, force: true }).catch(() => {});
+      }
+    } else if (process.platform === "linux") {
+      if (isPdf) {
+        const baseName = outPath.replace(/\.png$/, "");
+        await execFileAsync("pdftoppm", ["-png", "-f", "1", "-l", "1", "-scale-to", "256", filePath, baseName], { timeout: 10000 });
+        const generatedPath = baseName + "-1.png";
+        try {
+          await fs.access(generatedPath);
+          await fs.rename(generatedPath, outPath);
+        } catch {
+          return null;
+        }
+      } else if (isVideo) {
+        // Try ffmpegthumbnailer first, fallback to ffmpeg
+        try {
+          await execFileAsync("ffmpegthumbnailer", ["-i", filePath, "-o", outPath, "-s", "256", "-t", "10%"], { timeout: 15000 });
+        } catch {
+          try {
+            await execFileAsync("ffmpeg", ["-i", filePath, "-ss", "00:00:01", "-vframes", "1", "-vf", "scale=256:-1", "-y", outPath], { timeout: 15000 });
+          } catch {
+            return null;
+          }
+        }
+        try {
+          await fs.access(outPath);
+        } catch {
+          return null;
+        }
+      } else {
+        return null;
+      }
+    } else {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  if (thumbCache.size >= THUMB_MAX_CACHE) {
+    const firstKey = thumbCache.keys().next().value;
+    thumbCache.delete(firstKey);
+  }
+  thumbCache.set(filePath, outPath);
+  return outPath;
+}
+
 app.whenReady().then(() => {
-  protocol.handle("thumb", (request) => {
-    const filePath = decodeURIComponent(request.url.replace("thumb://", ""));
+  protocol.handle("thumb", async (request) => {
+    const filePath = decodeURIComponent(request.url.replace(/^thumb:\/\//, ""));
+
+    if (isPdfFile(filePath) || isVideoFile(filePath)) {
+      const thumbPath = await generateThumbnail(filePath);
+      if (thumbPath) {
+        return net.fetch("file://" + encodeURI(thumbPath).replace(/#/g, "%23"));
+      }
+      return new Response("", { status: 404 });
+    }
+
     return net.fetch("file://" + encodeURI(filePath).replace(/#/g, "%23"));
   });
 
@@ -1200,6 +1311,29 @@ ipcMain.handle("cancel-operation", async (event, operationId) => {
   return { success: true };
 });
 
+const conflictResolvers = new Map();
+
+ipcMain.on("resolve-file-conflict", (event, resolution) => {
+  const resolver = conflictResolvers.get(resolution.operationId);
+  if (resolver) {
+    conflictResolvers.delete(resolution.operationId);
+    resolver(resolution);
+  }
+});
+
+function askConflictResolution(sender, fileName, destPath, operationId) {
+  return new Promise((resolve) => {
+    const resolveId = `conflict-${Date.now()}-${Math.random()}`;
+    conflictResolvers.set(resolveId, resolve);
+    sender.send("file-conflict", {
+      resolveId,
+      fileName,
+      destPath,
+      operationId,
+    });
+  });
+}
+
 ipcMain.handle("batch-file-operation", async (event, items, operation, operationId) => {
   const cancelKey = operationId ? String(operationId) : null;
   const shouldCancel = () =>
@@ -1266,21 +1400,76 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
     }
   };
 
+  let applyToAll = null; // "replace" | "skip" | "keep-both"
+
+  const resolveConflict = async (item) => {
+    try {
+      await fs.access(item.dest);
+    } catch {
+      return item.dest; // no conflict
+    }
+
+    // Source and dest are the same file — skip
+    if (path.resolve(item.source) === path.resolve(item.dest)) return null;
+
+    if (applyToAll === "replace") return item.dest;
+    if (applyToAll === "skip") return null;
+    if (applyToAll === "keep-both") {
+      const parsed = path.parse(item.dest);
+      const isDir = (await fs.stat(item.source)).isDirectory();
+      return await findUniquePath(item.dest, isDir ? "directory" : "file");
+    }
+
+    const resolution = await askConflictResolution(
+      event.sender,
+      path.basename(item.dest),
+      item.dest,
+      operationId,
+    );
+
+    if (resolution.applyToAll) {
+      applyToAll = resolution.action;
+    }
+
+    if (resolution.action === "cancel") {
+      const err = new Error("Operation cancelled");
+      err.code = "CANCELLED";
+      throw err;
+    }
+    if (resolution.action === "skip") return null;
+    if (resolution.action === "keep-both") {
+      const parsed = path.parse(item.dest);
+      const isDir = (await fs.stat(item.source)).isDirectory();
+      return await findUniquePath(item.dest, isDir ? "directory" : "file");
+    }
+    return item.dest; // replace
+  };
+
   try {
     for (const item of items) {
       checkCancelled();
+
+      const finalDest = await resolveConflict(item);
+      if (finalDest === null) {
+        // Skip this item
+        const size = itemSizes.get(item.source) || 0;
+        processedBytes += size;
+        reportProgress();
+        continue;
+      }
+
       if (operation === "copy") {
-        await copyRecursive(item.source, item.dest);
+        await copyRecursive(item.source, finalDest);
       } else {
         try {
           checkCancelled();
-          await fs.rename(item.source, item.dest);
+          await fs.rename(item.source, finalDest);
 
           const size = itemSizes.get(item.source) || 0;
           processedBytes += size;
           reportProgress();
         } catch (err) {
-          await copyRecursive(item.source, item.dest);
+          await copyRecursive(item.source, finalDest);
           await fs.rm(item.source, { recursive: true, force: true });
         }
       }

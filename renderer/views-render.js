@@ -300,7 +300,7 @@ function getItemTagsHtml(itemPath) {
 
 function getThumbnailProps(fileType) {
   const icon = BUILTIN_ICONS[fileType.icon] || BUILTIN_ICONS.default || "";
-  if (viewMode === "thumbnail" && fileType === fileTypes.image) {
+  if (viewMode === "thumbnail" && (fileType === fileTypes.image || fileType === fileTypes.pdf || fileType === fileTypes.video)) {
     return { iconContent: icon, shouldObserveThumbnail: true };
   }
   return { iconContent: icon, shouldObserveThumbnail: false };
@@ -344,7 +344,13 @@ function setupDragHandlers(element, item) {
       draggedItems = [item.path];
     }
     element.classList.add("dragging");
-    e.preventDefault();
+
+    // Set data for HTML5 drag (internal pane-to-pane and external drop)
+    e.dataTransfer.effectAllowed = "copyMove";
+    e.dataTransfer.setData("text/plain", draggedItems.join("\n"));
+    e.dataTransfer.setData("application/x-prism-drag", "1");
+
+    // Also initiate native Electron drag for external apps
     window.fileManager.startDrag(draggedItems);
   });
 }
@@ -442,7 +448,7 @@ function setupItemClickHandlers(element, item) {
 function renderFileItem(item) {
   const fileType = getFileType(item);
   const element = document.createElement("div");
-  element.className = `file-item ${selectedItems.has(item.path) ? "selected" : ""}`;
+  element.className = `file-item${selectedItems.has(item.path) ? " selected" : ""}${item.hidden ? " hidden-item" : ""}`;
   element.dataset.path = item.path;
   element.dataset.name = item.name;
   element.dataset.isDirectory = item.isDirectory;

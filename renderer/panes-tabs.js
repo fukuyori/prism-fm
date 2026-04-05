@@ -808,6 +808,7 @@ async function init() {
     setupEventListeners();
     setupTabEventListeners();
     setupThumbnailObserver();
+    initFileConflictHandler();
     setupPathBarClick();
 
     if (splitViewEnabled && !isPicker) {

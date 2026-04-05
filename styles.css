@@ -303,6 +303,7 @@ body {
 
 .tab-bar-wrapper {
     position: relative;
+    -webkit-app-region: drag;
 }
 
 body.platform-linux .tab-bar-wrapper {
@@ -456,6 +457,7 @@ body.platform-win32 .window-controls {
     border-radius: 6px;
     cursor: pointer;
     opacity: 0.6;
+    -webkit-app-region: no-drag;
 }
 
 .new-tab-btn:hover {
@@ -505,8 +507,8 @@ body.platform-win32 .window-controls {
     position: relative;
     --col-icon: 32px;
     --col-size: 100px;
-    --col-modified: 140px;
-    --col-added: 140px;
+    --col-modified: 170px;
+    --col-added: 170px;
 }
 
 .app-container.split-view .file-list-container.active::before {
@@ -1022,6 +1024,10 @@ body.platform-win32 .window-controls {
     background: var(--accent-hover);
     outline: 2px dashed var(--accent-color);
     outline-offset: -2px;
+}
+
+.file-item.hidden-item {
+    opacity: 0.65;
 }
 
 .file-list.drop-target {

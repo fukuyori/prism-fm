@@ -332,15 +332,6 @@ function renderSettingsMenu() {
     }),
   );
   settingsMenu.appendChild(
-    createOption("Show Preview Pane", showPreviewPane, () => {
-      showPreviewPane = !showPreviewPane;
-      try {
-        localStorage.setItem("showPreviewPane", String(showPreviewPane));
-      } catch { }
-      updatePreviewPanelVisibility();
-    }),
-  );
-  settingsMenu.appendChild(
     createOption("Show Hidden Files", showHidden, () => {
       showHidden = !showHidden;
       try {
@@ -348,6 +339,18 @@ function renderSettingsMenu() {
       } catch { }
       renderCurrentView();
       updateStatusBar();
+    }),
+  );
+
+  settingsMenu.appendChild(createSep());
+  settingsMenu.appendChild(
+    createOption("Reset All Folder Settings", false, () => {
+      try {
+        Object.keys(viewSettingsCache).forEach((k) => delete viewSettingsCache[k]);
+        localStorage.removeItem("folderViewSettings");
+      } catch { }
+      renderCurrentView();
+      showNotification("All folder view settings have been reset");
     }),
   );
 }

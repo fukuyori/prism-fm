@@ -10,12 +10,15 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
-### v1.0.0-spumoni.3.6
+### v1.0.0-spumoni.3.7
 
-- Properties dialog with OS-specific info (Windows attributes, POSIX owner/group/permissions)
-- Click-to-copy for file name and path in Properties
-- Context menu scrollable when exceeding screen height
-- Fixed Windows hidden file detection and closeSidebar error
+- PDF and video thumbnails (macOS: qlmanage, Linux: pdftoppm/ffmpeg)
+- PDF and video preview in Preview Pane
+- File conflict dialog on copy/move (Replace, Skip, Keep Both, Apply to all)
+- Preview Pane toggle button in toolbar
+- Hidden files displayed with reduced opacity
+- Linux drag-out fix, date column width fix
+- Reset All Folder Settings option in Settings menu
 
 ### v1.0.0-spumoni.3.5
 
@@ -69,7 +72,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 - **Dual Pane Navigation**: Efficient file management with side-by-side views.
 - **Core Operations**: Copy, move, delete, rename, and archive management (extract/compress only; browsing inside archives is not supported).
 - **Drag and Drop**: Drag files out to external apps (native drag). Drop files from external apps to copy into the current directory. Within Prism FM, drag to move (hold Ctrl to copy). Drag and drop into/from archives is not supported.
-- **Preview System**: Integrated image and text previews.
+- **Preview System**: Integrated image, PDF, video, and text previews with thumbnail generation.
 - **Tagging**: Essential file organization with color-coded tags.
 - **Properties**: File/folder properties dialog with OS-specific info (Windows attributes, POSIX permissions), click-to-copy for name and path.
 - **Terminal Integration**: Configurable terminal emulator with 11 presets; open from toolbar or context menu.

@@ -42,6 +42,11 @@ const fileManagerApi = {
   cancelOperation: invoke("cancel-operation"),
   onFileOperationProgress: (callback) =>
     ipcRenderer.on("file-operation-progress", (event, percent) => callback(percent)),
+  onFileConflict: (callback) => {
+    ipcRenderer.on("file-conflict", (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners("file-conflict");
+  },
+  resolveFileConflict: send("resolve-file-conflict"),
 
   startDrag: send("start-drag"),
   onDragEnded: (callback) =>
