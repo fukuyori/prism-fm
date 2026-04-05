@@ -1,3 +1,12 @@
+function openTerminalInDir(dirPath) {
+  const settings = getTerminalSettings();
+  if (settings.preset === "system" || !settings.command) {
+    window.fileManager.openTerminal(dirPath);
+  } else {
+    window.fileManager.openTerminalCustom(dirPath, settings.command, settings.args || "");
+  }
+}
+
 var _isWin = null;
 function _checkWin() {
   if (_isWin === null) _isWin = window.fileManager && window.fileManager.platform === "win32";

@@ -25,6 +25,7 @@ const {
   clipboard,
   globalShortcut,
   protocol,
+  screen,
   net,
 } = require("electron");
 const path = require("path");
@@ -222,20 +223,52 @@ function registerDevtoolsShortcuts() {
 }
 
 
+function loadWindowBounds() {
+  try {
+    const file = path.join(app.getPath("userData"), "window-bounds.json");
+    return JSON.parse(fsSync.readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function saveWindowBounds() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const isMax = mainWindow.isMaximized();
+  const prev = loadWindowBounds();
+  const bounds = isMax
+    ? { width: prev?.width || 1200, height: prev?.height || 800, maximized: true }
+    : { width: mainWindow.getBounds().width, height: mainWindow.getBounds().height, maximized: false };
+  try {
+    const file = path.join(app.getPath("userData"), "window-bounds.json");
+    fsSync.writeFileSync(file, JSON.stringify(bounds));
+  } catch { }
+}
+
 function createWindow() {
+  const saved = loadWindowBounds();
+  const winWidth = saved?.width || 1200;
+  const winHeight = saved?.height || 800;
+
+  const cursor = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursor);
+  const area = display.workArea;
+  const x = Math.round(area.x + (area.width - winWidth) / 2);
+  const y = Math.round(area.y + (area.height - winHeight) / 2);
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: winWidth,
+    height: winHeight,
+    x,
+    y,
     minWidth: 360,
     minHeight: 300,
     transparent: true,
     backgroundColor: "#00000000",
+    titleBarStyle: "hidden",
     ...(process.platform === "darwin"
-      ? {
-          titleBarStyle: "hidden",
-          trafficLightPosition: { x: 10, y: 10 },
-        }
-      : { frame: false }),
+      ? { trafficLightPosition: { x: 10, y: 10 } }
+      : {}),
     icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       nodeIntegration: false,
@@ -243,6 +276,10 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
     },
   });
+
+  if (saved?.maximized) {
+    mainWindow.maximize();
+  }
 
   const userArgs = getUserArgs();
   isPicker = userArgs.includes("--picker");
@@ -300,6 +337,11 @@ function createWindow() {
     mainWindow.webContents.send("window-maximized", false);
   });
 
+  mainWindow.on("resize", saveWindowBounds);
+  mainWindow.on("move", saveWindowBounds);
+  mainWindow.on("maximize", saveWindowBounds);
+  mainWindow.on("unmaximize", saveWindowBounds);
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -342,6 +384,18 @@ app.on("will-quit", () => {
   }
 });
 
+
+ipcMain.on("window-start-drag", () => {
+  if (mainWindow && !mainWindow.isMaximized()) {
+    mainWindow.setMovable(true);
+  }
+});
+
+ipcMain.on("window-move-by", (event, dx, dy) => {
+  if (!mainWindow || mainWindow.isMaximized()) return;
+  const [x, y] = mainWindow.getPosition();
+  mainWindow.setPosition(x + dx, y + dy);
+});
 
 ipcMain.on("window-minimize", () => {
   mainWindow?.minimize();
@@ -736,6 +790,26 @@ ipcMain.handle("open-terminal", async (event, dirPath) => {
       });
       child.unref();
     }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("open-terminal-custom", async (event, dirPath, command, args) => {
+  const { spawn } = require("child_process");
+  try {
+    const parsedArgs = args
+      .replace(/\{dir\}/g, dirPath)
+      .match(/(?:[^\s"]+|"[^"]*")+/g)
+      ?.map((a) => a.replace(/^"|"$/g, "")) || [];
+    const child = spawn(command, parsedArgs, {
+      cwd: dirPath,
+      detached: true,
+      stdio: "ignore",
+      shell: process.platform === "win32",
+    });
+    child.unref();
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };

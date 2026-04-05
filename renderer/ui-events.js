@@ -3,6 +3,30 @@ function setupNavigationButtons() {
   document.getElementById("forward-btn").addEventListener("click", goForward);
   document.getElementById("up-btn").addEventListener("click", goUp);
   document.getElementById("refresh-btn").addEventListener("click", refresh);
+
+  const splitViewBtn = document.getElementById("split-view-btn");
+  if (splitViewBtn) {
+    if (pickerMode) {
+      splitViewBtn.style.display = "none";
+    } else {
+      splitViewBtn.classList.toggle("active", splitViewEnabled);
+      splitViewBtn.addEventListener("click", () => {
+        setSplitViewEnabled(!splitViewEnabled);
+        splitViewBtn.classList.toggle("active", splitViewEnabled);
+      });
+    }
+  }
+
+  const openTerminalBtn = document.getElementById("open-terminal-btn");
+  if (openTerminalBtn) {
+    if (pickerMode) {
+      openTerminalBtn.style.display = "none";
+    } else {
+      openTerminalBtn.addEventListener("click", () => {
+        openTerminalInDir(currentPath);
+      });
+    }
+  }
 }
 
 function setupSidebarToggle() {

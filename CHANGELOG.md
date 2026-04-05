@@ -2,6 +2,26 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [1.0.0-spumoni.3.5] - 2026-04-05
+
+### Added
+
+- **Terminal settings** -- Customize modal (renamed from "Customize Colors") now includes a Terminal section at the top with preset selection and custom command/args input
+- **Terminal presets** -- System Default, Windows Terminal, PowerShell (Windows), PowerShell 7 (pwsh), cmd, Terminal.app, iTerm2, kitty, Alacritty, GNOME Terminal, WezTerm, Custom
+- **Terminal toolbar button** -- Terminal icon next to Split View button; opens terminal in active pane's directory
+- **Terminal in context menu** -- "Open in Terminal" available for files (opens parent directory), folders (opens that folder), and background right-click (opens current directory)
+- **Title bar double-click maximize** -- Tab bar drag-to-move and double-click-to-maximize implemented via mousedown tracking (works with `transparent: true`)
+- **Window bounds persistence** -- Window size and maximized state saved to `window-bounds.json`; position determined by mouse cursor's monitor (centered on work area)
+
+### Changed
+
+- **Window frame** -- All platforms now use `titleBarStyle: "hidden"` instead of `frame: false` on Windows/Linux
+- **Compact row heights** -- Detailed view icon 32→24px (svg 24→20px), col-icon 44→32px, padding 2→1px; List view icon 20→18px (svg 16→14px), col-icon 24px fixed, padding 0px
+- **Customize modal** -- Renamed from "Customize Colors" to "Customize"
+- **Settings menu** -- "Customize Colors..." renamed to "Customize..."
+- **Split View** -- Moved from settings dialog to toolbar button; removed from view menu
+- **Theme select styling** -- Dropdown uses `appearance: none` with custom arrow and themed `option` elements
+
 ## [1.0.0-spumoni.3.4] - 2026-04-05
 
 ### Added

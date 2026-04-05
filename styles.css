@@ -303,7 +303,6 @@ body {
 
 .tab-bar-wrapper {
     position: relative;
-    -webkit-app-region: drag;
 }
 
 body.platform-linux .tab-bar-wrapper {
@@ -316,7 +315,6 @@ body.platform-linux .tab-bar-wrapper {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     padding: 4px 8px;
-    -webkit-app-region: drag;
     gap: 4px;
     min-height: 36px;
     overflow-x: auto;
@@ -505,7 +503,7 @@ body.platform-win32 .window-controls {
 
 .file-list-container {
     position: relative;
-    --col-icon: 44px;
+    --col-icon: 32px;
     --col-size: 100px;
     --col-modified: 140px;
     --col-added: 140px;
@@ -1000,7 +998,7 @@ body.platform-win32 .window-controls {
     display: grid;
     grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-size) var(--col-modified) var(--col-added);
     align-items: center;
-    padding: 2px 8px;
+    padding: 1px 8px;
     margin-bottom: 0;
     border-radius: 4px;
     cursor: pointer;
@@ -1033,16 +1031,16 @@ body.platform-win32 .window-controls {
 }
 
 .file-icon {
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .file-icon svg {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
 }
 
 .file-name {
@@ -1115,20 +1113,20 @@ body.platform-win32 .window-controls {
 
 /* List view: compact single-line, no size/date/added columns */
 .file-list.list-view .file-item {
-    grid-template-columns: var(--col-icon) 1fr;
-    padding: 1px 8px;
+    grid-template-columns: 24px 1fr;
+    padding: 0px 8px;
     margin-bottom: 0;
     border-radius: 4px;
 }
 
 .file-list.list-view .file-icon {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
 }
 
 .file-list.list-view .file-icon svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
 }
 
 .file-list.list-view .file-name {
@@ -1871,14 +1869,41 @@ body.platform-win32 .window-controls {
     padding: 8px 10px;
     border-radius: 10px;
     border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
+    background: var(--bg-tertiary);
     color: var(--text-primary);
     font-size: 12px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+    cursor: pointer;
+}
+
+.theme-select option {
+    background: var(--menu-bg, #2a2a3a);
+    color: var(--text-primary, #fff);
 }
 
 .theme-select:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.theme-text-input {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.terminal-custom-fields {
+    padding: 8px 16px 12px;
 }
 
 .theme-chip-btn {
