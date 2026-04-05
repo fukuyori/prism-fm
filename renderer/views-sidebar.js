@@ -455,9 +455,10 @@ async function ejectDrive(drive) {
       cancelAllFolderSizeWork();
       cancelFolderSizeForPath(drive.path);
     }
-    const result = await window.fileManager.ejectDevice(drive.device);
+    const ejectTarget = drive.device || drive.path;
+    const result = await window.fileManager.ejectDevice(ejectTarget);
     if (result.success) {
-      showNotification(`Ejected ${drive.name || drive.device}`);
+      showNotification(`Ejected ${drive.name || ejectTarget}`);
       await renderDisks();
       if (currentPath.startsWith(drive.path)) {
         await navigateTo(await window.fileManager.getHomeDirectory());
@@ -578,7 +579,8 @@ function createDriveRow(drive) {
 
   const { driveIcon, lockIcon } = buildDriveIcons(drive);
   const barHtml = buildDriveUsageBar(drive);
-  const showEject = drive.mounted && drive.path !== "/" && drive.device;
+  const isMacVolume = window.fileManager.platform === "darwin" && drive.path.startsWith("/Volumes/");
+  const showEject = drive.mounted && drive.path !== "/" && (drive.device || isMacVolume);
   const ejectIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 19H3v-2h18v2zm-9-14l-7 10h14l-7-10z"/></svg>`;
 
   row.innerHTML = `
@@ -593,7 +595,7 @@ function createDriveRow(drive) {
       btn.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        await unmountDrive(drive);
+        await ejectDrive(drive);
       });
     }
   }
@@ -641,7 +643,8 @@ function showDriveContextMenu(e, drive) {
       },
     });
 
-    if (drive.path !== "/" && drive.device) {
+    const canEject = drive.path !== "/" && (drive.device || (window.fileManager.platform === "darwin" && drive.path.startsWith("/Volumes/")));
+    if (canEject) {
       items.push({ type: "separator" });
       items.push({
         label: "Eject",

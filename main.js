@@ -2149,10 +2149,16 @@ ipcMain.handle("eject-device", async (event, devicePath) => {
   const util = require("util");
   const execPromise = util.promisify(exec);
 
-  // Extract the base device (e.g., /dev/sdb from /dev/sdb1)
-  const baseDev = devicePath.replace(/\d+$/, "");
-
   try {
+    if (process.platform === "darwin") {
+      // macOS: devicePath is mount point (e.g., /Volumes/USB)
+      await execPromise(`diskutil eject "${devicePath}"`);
+      return { success: true };
+    }
+
+    // Linux: Extract the base device (e.g., /dev/sdb from /dev/sdb1)
+    const baseDev = devicePath.replace(/\d+$/, "");
+
     // First unmount all partitions
     try {
       await execPromise(`udisksctl unmount -b "${devicePath}" --no-user-interaction`);

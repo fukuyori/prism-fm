@@ -2,6 +2,13 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [1.0.0-spumoni.3.7.1] - 2026-04-05
+
+### Fixed
+- **macOS drive eject** -- Added `diskutil eject` support for macOS; `/Volumes/` drives now show eject button and context menu option without requiring `device` property
+- **Eject button action** -- Eject button in sidebar now calls `ejectDrive` instead of `unmountDrive` (which used Linux-only `udisksctl`)
+- **saveCacheTimeout undefined** -- Added missing global variable declaration for `saveCacheTimeout` in core.js, fixing crash on eject
+
 ## [1.0.0-spumoni.3.7] - 2026-04-05
 
 ### Added

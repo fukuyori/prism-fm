@@ -27,6 +27,7 @@ var folderSizeCache = new Map();
 var folderSizeQueue = [];
 var folderSizeInFlight = new Map();
 var folderSizeActive = 0;
+var saveCacheTimeout = null;
 var FOLDER_SIZE_CONCURRENCY = 3;
 var MAX_FOLDER_SIZE_CACHE_ENTRIES = 1000;
 var MAX_VIEW_SETTINGS_CACHE_ENTRIES = 50;
