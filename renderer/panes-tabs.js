@@ -607,6 +607,7 @@ function loadPickerSidebarData() {
     renderPinnedItems();
   });
   renderDisks();
+  startDrivePolling();
 }
 
 async function bootstrapPicker() {

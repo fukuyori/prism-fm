@@ -834,7 +834,7 @@ body.platform-win32 .window-controls {
 
 .file-list-header {
     display: grid;
-    grid-template-columns: var(--col-icon) 1fr var(--col-size) var(--col-modified) var(--col-added);
+    grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-size) var(--col-modified) var(--col-added);
     padding: 10px 16px;
     font-size: 12px;
     font-weight: 600;
@@ -855,15 +855,12 @@ body.platform-win32 .window-controls {
     padding-right: 6px;
 }
 
+.file-list-header .header-size {
+    text-align: right;
+}
+
 .column-resizer {
-    position: absolute;
-    top: 0;
-    left: -10px;
-    width: 20px;
-    height: 100%;
-    cursor: col-resize;
-    z-index: 2;
-    background: transparent;
+    display: none;
 }
 
 .column-resizer::after {
@@ -884,37 +881,37 @@ body.platform-win32 .window-controls {
 
 .file-list-container:is(.hide-size, .responsive-hide-size) .file-list-header,
 .file-list-container:is(.hide-size, .responsive-hide-size) .file-item {
-    grid-template-columns: var(--col-icon) 1fr var(--col-modified) var(--col-added);
+    grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-modified) var(--col-added);
 }
 
 .file-list-container:is(.hide-modified, .responsive-hide-modified) .file-list-header,
 .file-list-container:is(.hide-modified, .responsive-hide-modified) .file-item {
-    grid-template-columns: var(--col-icon) 1fr var(--col-size) var(--col-added);
+    grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-size) var(--col-added);
 }
 
 .file-list-container:is(.hide-added, .responsive-hide-added) .file-list-header,
 .file-list-container:is(.hide-added, .responsive-hide-added) .file-item {
-    grid-template-columns: var(--col-icon) 1fr var(--col-size) var(--col-modified);
+    grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-size) var(--col-modified);
 }
 
 .file-list-container:is(.hide-size, .responsive-hide-size):is(.hide-modified, .responsive-hide-modified) .file-list-header,
 .file-list-container:is(.hide-size, .responsive-hide-size):is(.hide-modified, .responsive-hide-modified) .file-item {
-    grid-template-columns: var(--col-icon) 1fr var(--col-added);
+    grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-added);
 }
 
 .file-list-container:is(.hide-size, .responsive-hide-size):is(.hide-added, .responsive-hide-added) .file-list-header,
 .file-list-container:is(.hide-size, .responsive-hide-size):is(.hide-added, .responsive-hide-added) .file-item {
-    grid-template-columns: var(--col-icon) 1fr var(--col-modified);
+    grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-modified);
 }
 
 .file-list-container:is(.hide-modified, .responsive-hide-modified):is(.hide-added, .responsive-hide-added) .file-list-header,
 .file-list-container:is(.hide-modified, .responsive-hide-modified):is(.hide-added, .responsive-hide-added) .file-item {
-    grid-template-columns: var(--col-icon) 1fr var(--col-size);
+    grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-size);
 }
 
 .file-list-container:is(.hide-size, .responsive-hide-size):is(.hide-modified, .responsive-hide-modified):is(.hide-added, .responsive-hide-added) .file-list-header,
 .file-list-container:is(.hide-size, .responsive-hide-size):is(.hide-modified, .responsive-hide-modified):is(.hide-added, .responsive-hide-added) .file-item {
-    grid-template-columns: var(--col-icon) 1fr;
+    grid-template-columns: var(--col-icon) minmax(8em, 1fr);
 }
 
 .file-list-container:is(.hide-size, .responsive-hide-size) :is(.file-size, .header-size) { display: none; }
@@ -1001,11 +998,11 @@ body.platform-win32 .window-controls {
 
 .file-item {
     display: grid;
-    grid-template-columns: var(--col-icon) 1fr var(--col-size) var(--col-modified) var(--col-added);
+    grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-size) var(--col-modified) var(--col-added);
     align-items: center;
-    padding: 4px 8px;
-    margin-bottom: 1px;
-    border-radius: 6px;
+    padding: 2px 8px;
+    margin-bottom: 0;
+    border-radius: 4px;
     cursor: pointer;
     background: var(--file-row-bg);
     transition: background 0.15s;
@@ -1055,17 +1052,22 @@ body.platform-win32 .window-controls {
     text-overflow: ellipsis;
     white-space: nowrap;
     padding-right: 12px;
+    min-width: 8em;
 }
 
 .file-size {
     font-size: 13px;
     color: var(--text-secondary);
+    text-align: right;
+    padding-left: 12px;
+    padding-right: 12px;
 }
 
 .file-date,
 .file-added {
     font-size: 13px;
     color: var(--text-muted);
+    padding-left: 12px;
 }
 
 
@@ -1114,7 +1116,7 @@ body.platform-win32 .window-controls {
 /* List view: compact single-line, no size/date/added columns */
 .file-list.list-view .file-item {
     grid-template-columns: var(--col-icon) 1fr;
-    padding: 2px 8px;
+    padding: 1px 8px;
     margin-bottom: 0;
     border-radius: 4px;
 }
@@ -2388,44 +2390,30 @@ body.platform-win32 .window-controls {
 }
 
 
+/* 800px: File name starts truncating, all columns still visible */
 @media (max-width: 800px) {
     .file-list-container {
         --col-size: 80px;
-    }
-
-    .sidebar-toggle {
-        display: flex;
-    }
-
-    .sidebar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        width: 240px;
-        z-index: 100;
-        transform: translateX(-100%);
-        background: var(--bg-overlay);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border-right: 1px solid var(--border-color);
-        box-shadow: var(--shadow);
-    }
-
-    .sidebar.open {
-        transform: translateX(0);
     }
 
     .search-container {
         width: 140px;
     }
 
+    .sidebar-resizer,
+    .preview-resizer {
+        display: none;
+    }
+}
+
+/* 650px: Hide Modified/Added, toolbar wraps */
+@media (max-width: 650px) {
     .file-list-header {
-        grid-template-columns: var(--col-icon) 1fr var(--col-size);
+        grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-size);
     }
 
     .file-item {
-        grid-template-columns: var(--col-icon) 1fr var(--col-size);
+        grid-template-columns: var(--col-icon) minmax(8em, 1fr) var(--col-size);
     }
 
     .file-date,
@@ -2438,15 +2426,6 @@ body.platform-win32 .window-controls {
         display: none;
     }
 
-    .sidebar-resizer,
-    .preview-resizer,
-    .column-resizer {
-        display: none;
-    }
-}
-
-
-@media (max-width: 650px) {
     .toolbar {
         padding: 8px 10px;
         gap: 8px;
@@ -2483,17 +2462,44 @@ body.platform-win32 .window-controls {
     .action-btn.action-btn-wide span {
         display: none;
     }
+}
+
+/* 480px: Sidebar overlay, compact UI */
+@media (max-width: 480px) {
+    .sidebar-toggle {
+        display: flex;
+    }
+
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 240px;
+        z-index: 100;
+        transform: translateX(-100%);
+        background: var(--bg-overlay);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-right: 1px solid var(--border-color);
+        box-shadow: var(--shadow);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
 
     .file-list-header,
     .file-item {
         grid-template-columns: 36px 1fr;
     }
 
-    .file-size {
-        display: none;
-    }
-
-    .header-size {
+    .file-size,
+    .file-date,
+    .file-added,
+    .header-size,
+    .header-date,
+    .header-added {
         display: none;
     }
 
@@ -2507,18 +2513,6 @@ body.platform-win32 .window-controls {
         height: 20px;
     }
 
-    .status-bar {
-        padding: 6px 10px;
-        font-size: 11px;
-    }
-
-    .status-right {
-        display: none;
-    }
-}
-
-
-@media (max-width: 480px) {
     .toolbar {
         padding: 6px 8px;
         gap: 6px;
@@ -2580,6 +2574,15 @@ body.platform-win32 .window-controls {
 
     .file-name {
         font-size: 13px;
+    }
+
+    .status-bar {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+
+    .status-right {
+        display: none;
     }
 
     .empty-state {

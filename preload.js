@@ -11,6 +11,7 @@ const fileManagerApi = {
   getDrives: invoke("get-drives"),
   mountDevice: invoke("mount-device"),
   unmountDevice: invoke("unmount-device"),
+  ejectDevice: invoke("eject-device"),
   getParentDirectory: invoke("get-parent-directory"),
   getWalThemes: invoke("get-wal-themes"),
 

@@ -91,7 +91,9 @@ function formatSize(bytes) {
   if (bytes === 0 || bytes === undefined) return "—";
   const units = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + " " + units[i];
+  const value = (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0);
+  const formatted = value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return formatted + " " + units[i];
 }
 
 function folderSizeSpinnerHtml() {

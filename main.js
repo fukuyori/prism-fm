@@ -32,7 +32,8 @@ const fs = require("fs").promises;
 const fsSync = require("fs");
 const sizeOf = require("image-size");
 const { fileURLToPath } = require("url");
-const { path7za } = require("7zip-bin");
+const { path7za: path7zaRaw } = require("7zip-bin");
+const path7za = path7zaRaw.replace("app.asar", "app.asar.unpacked");
 
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
@@ -1792,6 +1793,37 @@ ipcMain.handle("mount-device", async (event, devicePath, options = {}) => {
   }
 });
 
+
+ipcMain.handle("eject-device", async (event, devicePath) => {
+  const { exec } = require("child_process");
+  const util = require("util");
+  const execPromise = util.promisify(exec);
+
+  // Extract the base device (e.g., /dev/sdb from /dev/sdb1)
+  const baseDev = devicePath.replace(/\d+$/, "");
+
+  try {
+    // First unmount all partitions
+    try {
+      await execPromise(`udisksctl unmount -b "${devicePath}" --no-user-interaction`);
+    } catch { /* may already be unmounted */ }
+
+    // Then power off / eject the device
+    try {
+      await execPromise(`udisksctl power-off -b "${baseDev}" --no-user-interaction`);
+      return { success: true };
+    } catch {
+      try {
+        await execPromise(`eject "${baseDev}"`);
+        return { success: true };
+      } catch (ejectErr) {
+        return { success: false, error: ejectErr.message || "Eject failed" };
+      }
+    }
+  } catch (error) {
+    return { success: false, error: error.message || "Eject failed" };
+  }
+});
 
 ipcMain.handle("show-open-dialog", async (event, options) => {
   const result = await dialog.showOpenDialog(mainWindow, options);

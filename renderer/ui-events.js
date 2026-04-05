@@ -27,7 +27,7 @@ function setupSidebarToggle() {
 
   sidebar.addEventListener("click", (e) => {
     if (e.target.closest(".sidebar-item, .nav-item")) {
-      if (window.innerWidth <= 800) {
+      if (window.innerWidth <= 480) {
         closeSidebar();
       }
     }
@@ -458,70 +458,9 @@ function applyColumnWidths(widths) {
 }
 
 function setupColumnResizers() {
+  // Column resizing is disabled; apply default widths only
   const widths = readColumnWidths();
   applyColumnWidths(widths);
-
-  const columnVarMap = {
-    size: "--col-size",
-    modified: "--col-modified",
-    added: "--col-added",
-  };
-
-  document.querySelectorAll(".column-resizer").forEach((resizer) => {
-    if (resizer.dataset.bound === "true") return;
-    resizer.dataset.bound = "true";
-
-    resizer.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const column = resizer.dataset.column;
-      if (!column || !columnVarMap[column]) return;
-
-      const container = resizer.closest(".file-list-container");
-      const headerCell = resizer.parentElement;
-      const min = COLUMN_MIN[column] || 60;
-
-      let startWidth = headerCell
-        ? headerCell.getBoundingClientRect().width
-        : widths[column];
-
-      if (container) {
-        const computed = getComputedStyle(container).getPropertyValue(
-          columnVarMap[column],
-        );
-        const parsed = parseFloat(computed);
-        if (!Number.isNaN(parsed)) startWidth = parsed;
-      }
-
-      const startX = e.clientX;
-      document.body.style.userSelect = "none";
-      document.body.style.cursor = "col-resize";
-
-      let colRafId = null;
-      const onMove = (ev) => {
-        if (colRafId) return;
-        colRafId = requestAnimationFrame(() => {
-          colRafId = null;
-          const nextWidth = clampMin(startWidth - (ev.clientX - startX), min);
-          widths[column] = nextWidth;
-          applyColumnWidths(widths);
-        });
-      };
-
-      const onUp = () => {
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-        try {
-          localStorage.setItem(COLUMN_WIDTH_STORAGE_KEY, JSON.stringify(widths));
-        } catch { }
-      };
-
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    });
-  });
 }
 
 function refreshColumnResizers() {
@@ -532,64 +471,8 @@ function refreshColumnResizers() {
 }
 
 function updateResponsiveColumns() {
-  const containers = document.querySelectorAll(".file-list-container");
-  containers.forEach((container) => {
-    const width = container.getBoundingClientRect().width;
-    const readCssNumber = (name, fallback) => {
-      const raw = getComputedStyle(container).getPropertyValue(name);
-      const parsed = parseFloat(raw);
-      return Number.isFinite(parsed) ? parsed : fallback;
-    };
-
-    const colIcon = readCssNumber("--col-icon", 44);
-    const colSize = readCssNumber("--col-size", 100);
-    const colModified = readCssNumber("--col-modified", 140);
-    const colAdded = readCssNumber("--col-added", 140);
-    const nameMin = 140;
-
-    const baseHideSize = container.classList.contains("hide-size");
-    const baseHideModified = container.classList.contains("hide-modified");
-    const baseHideAdded = container.classList.contains("hide-added");
-
-    let showSize = !baseHideSize;
-    let showModified = !baseHideModified;
-    let showAdded = !baseHideAdded;
-
-    const fixedWidth = () =>
-      colIcon +
-      (showSize ? colSize : 0) +
-      (showModified ? colModified : 0) +
-      (showAdded ? colAdded : 0);
-
-    while (width - fixedWidth() < nameMin) {
-      if (showAdded) {
-        showAdded = false;
-        continue;
-      }
-      if (showModified) {
-        showModified = false;
-        continue;
-      }
-      if (showSize) {
-        showSize = false;
-        continue;
-      }
-      break;
-    }
-
-    container.classList.toggle(
-      "responsive-hide-added",
-      baseHideAdded ? false : !showAdded,
-    );
-    container.classList.toggle(
-      "responsive-hide-modified",
-      baseHideModified ? false : !showModified,
-    );
-    container.classList.toggle(
-      "responsive-hide-size",
-      baseHideSize ? false : !showSize,
-    );
-  });
+  // Column visibility is now handled entirely by CSS media queries.
+  // This function is kept for compatibility with callers.
 }
 
 function setupPanelResizers() {
@@ -711,7 +594,7 @@ function setupEventListeners() {
     if (resizeRafId) return;
     resizeRafId = requestAnimationFrame(() => {
       resizeRafId = null;
-      if (window.innerWidth > 800) closeSidebar();
+      if (window.innerWidth > 480) closeSidebar();
       if (fileListLeft) updateGroupHeaderStacking(fileListLeft);
       if (splitViewEnabled && fileListRight) {
         updateGroupHeaderStacking(fileListRight);
