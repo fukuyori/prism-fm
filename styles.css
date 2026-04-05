@@ -1509,6 +1509,8 @@ body.platform-win32 .window-controls {
     border-radius: 12px;
     padding: 8px 0;
     min-width: 220px;
+    max-height: calc(100vh - 20px);
+    overflow-y: auto;
     box-shadow: var(--shadow);
     z-index: 1000;
     display: none;
@@ -1900,6 +1902,17 @@ body.platform-win32 .window-controls {
     color: var(--text-primary);
     font-size: 12px;
     font-family: inherit;
+}
+
+.props-copyable {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 1px 4px;
+    transition: background 0.15s;
+}
+
+.props-copyable:hover {
+    background: var(--bg-hover);
 }
 
 .terminal-custom-fields {

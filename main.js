@@ -428,9 +428,10 @@ ipcMain.on("picker-cancel", () => {
 const { execFile } = require("child_process");
 
 function getWindowsHiddenSet(dirPath) {
+  const { exec } = require("child_process");
   return new Promise((resolve) => {
-    execFile("cmd.exe", ["/c", "dir", "/ah", "/b", dirPath],
-      { encoding: "utf8", windowsHide: true, timeout: 5000, maxBuffer: 4 * 1024 * 1024 },
+    exec(`dir /ah /b "${dirPath}"`,
+      { encoding: "utf8", windowsHide: true, timeout: 5000, maxBuffer: 4 * 1024 * 1024, shell: "cmd.exe" },
       (err, stdout) => {
         const hidden = new Set();
         if (err || !stdout) { resolve(hidden); return; }
@@ -1298,28 +1299,114 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
 });
 
 ipcMain.handle("get-item-info", async (event, itemPath) => {
+  const { exec } = require("child_process");
+  const util = require("util");
+  const execPromise = util.promisify(exec);
+  const plat = process.platform;
+
   try {
-    const stats = await fs.stat(itemPath);
+    let stats;
+    try {
+      stats = await fs.stat(itemPath);
+    } catch {
+      stats = await fs.lstat(itemPath);
+    }
     let size = stats.size;
+    let fileCount = null;
 
     if (stats.isDirectory()) {
-      size = await getDirectorySize(itemPath);
+      size = 0;
+      try {
+        const entries = await fs.readdir(itemPath);
+        fileCount = entries.length;
+      } catch { }
     }
 
-    return {
-      success: true,
-      info: {
-        name: path.basename(itemPath),
-        path: itemPath,
-        size,
-        created: stats.birthtime,
-        modified: stats.mtime,
-        accessed: stats.atime,
-        isDirectory: stats.isDirectory(),
-        isFile: stats.isFile(),
-        permissions: stats.mode,
-      },
+    const info = {
+      name: path.basename(itemPath),
+      path: itemPath,
+      size,
+      created: stats.birthtime,
+      modified: stats.mtime,
+      accessed: stats.atime,
+      isDirectory: stats.isDirectory(),
+      isFile: stats.isFile(),
+      isSymlink: stats.isSymbolicLink ? stats.isSymbolicLink() : false,
+      permissions: stats.mode,
+      fileCount,
     };
+
+    // Symlink target
+    try {
+      const lstat = await fs.lstat(itemPath);
+      if (lstat.isSymbolicLink()) {
+        info.isSymlink = true;
+        info.symlinkTarget = await fs.readlink(itemPath);
+      }
+    } catch { }
+
+    // MIME type from extension
+    const ext = path.extname(itemPath).toLowerCase().replace(".", "");
+    const mimeMap = {
+      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif",
+      webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp", ico: "image/x-icon",
+      mp4: "video/mp4", mkv: "video/x-matroska", webm: "video/webm", mov: "video/quicktime",
+      avi: "video/x-msvideo", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg",
+      flac: "audio/flac", m4a: "audio/mp4", pdf: "application/pdf",
+      zip: "application/zip", gz: "application/gzip", tar: "application/x-tar",
+      "7z": "application/x-7z-compressed", rar: "application/x-rar-compressed",
+      js: "text/javascript", ts: "text/typescript", json: "application/json",
+      html: "text/html", css: "text/css", xml: "text/xml", txt: "text/plain",
+      md: "text/markdown", py: "text/x-python", rs: "text/x-rust",
+      c: "text/x-c", cpp: "text/x-c++", java: "text/x-java",
+      doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      exe: "application/x-executable", dll: "application/x-msdownload",
+      ttf: "font/ttf", otf: "font/otf", woff: "font/woff", woff2: "font/woff2",
+    };
+    info.mimeType = info.isDirectory ? "inode/directory" : (mimeMap[ext] || "application/octet-stream");
+
+    // OS-specific extensions
+    if (plat === "win32") {
+      try {
+        const { stdout } = await execPromise(`attrib "${itemPath}"`, { windowsHide: true, timeout: 3000 });
+        const line = stdout.trim();
+        const attrs = [];
+        if (/\bR\b/.test(line)) attrs.push("Read-only");
+        if (/\bH\b/.test(line)) attrs.push("Hidden");
+        if (/\bS\b/.test(line)) attrs.push("System");
+        if (/\bA\b/.test(line)) attrs.push("Archive");
+        info.attributes = attrs.length > 0 ? attrs.join(", ") : "Normal";
+      } catch { }
+    } else {
+      // macOS / Linux: owner, group, permissions string
+      try {
+        const os = require("os");
+        const uid = stats.uid;
+        const gid = stats.gid;
+        info.owner = uid === os.userInfo().uid ? os.userInfo().username : String(uid);
+
+        // Permission string (rwxr-xr-x)
+        const mode = stats.mode;
+        const perms = [
+          (mode & 0o400) ? "r" : "-", (mode & 0o200) ? "w" : "-", (mode & 0o100) ? "x" : "-",
+          (mode & 0o040) ? "r" : "-", (mode & 0o020) ? "w" : "-", (mode & 0o010) ? "x" : "-",
+          (mode & 0o004) ? "r" : "-", (mode & 0o002) ? "w" : "-", (mode & 0o001) ? "x" : "-",
+        ].join("");
+        info.permissionsString = perms;
+
+        // Group name via id command
+        try {
+          const { stdout: grpOut } = await execPromise(`id -gn ${uid}`, { timeout: 2000 });
+          info.group = grpOut.trim();
+        } catch {
+          info.group = String(gid);
+        }
+      } catch { }
+    }
+
+    return { success: true, info };
   } catch (error) {
     return { success: false, error: error.message };
   }
