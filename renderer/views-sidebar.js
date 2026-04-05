@@ -318,6 +318,8 @@ function renderPinnedItems() {
   }
 }
 
+var driveRefreshInterval = null;
+
 async function renderDisks() {
   if (!drivesListEl) return;
   drivesListEl.innerHTML = "";
@@ -327,6 +329,20 @@ async function renderDisks() {
 
   for (const d of filtered) {
     drivesListEl.appendChild(createDriveRow(d));
+  }
+}
+
+function startDrivePolling() {
+  if (driveRefreshInterval) return;
+  driveRefreshInterval = setInterval(() => {
+    renderDisks();
+  }, 5000);
+}
+
+function stopDrivePolling() {
+  if (driveRefreshInterval) {
+    clearInterval(driveRefreshInterval);
+    driveRefreshInterval = null;
   }
 }
 
@@ -429,6 +445,28 @@ async function unmountDrive(drive) {
     }
   } catch (err) {
     showNotification("Unmount failed: " + err.message, "error");
+  }
+}
+
+async function ejectDrive(drive) {
+  try {
+    if (drive.mounted && drive.path) {
+      await prepareUnmount(drive.path);
+      cancelAllFolderSizeWork();
+      cancelFolderSizeForPath(drive.path);
+    }
+    const result = await window.fileManager.ejectDevice(drive.device);
+    if (result.success) {
+      showNotification(`Ejected ${drive.name || drive.device}`);
+      await renderDisks();
+      if (currentPath.startsWith(drive.path)) {
+        await navigateTo(await window.fileManager.getHomeDirectory());
+      }
+    } else {
+      showNotification(result.error || "Could not eject", "error");
+    }
+  } catch (err) {
+    showNotification("Eject failed: " + err.message, "error");
   }
 }
 
@@ -592,6 +630,7 @@ function showDriveContextMenu(e, drive) {
   const ICON_OPEN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>`;
   const ICON_MOUNT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>`;
   const ICON_UNMOUNT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
+  const ICON_EJECT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l-8 10h16L12 5z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>`;
 
   if (drive.mounted) {
     items.push({
@@ -605,10 +644,10 @@ function showDriveContextMenu(e, drive) {
     if (drive.path !== "/" && drive.device) {
       items.push({ type: "separator" });
       items.push({
-        label: "Unmount",
-        icon: ICON_UNMOUNT,
+        label: "Eject",
+        icon: ICON_EJECT,
         onClick: async () => {
-          await unmountDrive(drive);
+          await ejectDrive(drive);
         },
       });
     }

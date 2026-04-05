@@ -10,6 +10,15 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
+### v1.0.0-spumoni.3.4
+
+- File size column right-aligned with thousands separator
+- Responsive layout reworked: 800px file name truncation, 650px hide dates, 480px sidebar overlay
+- Column resizers removed (fixed widths)
+- Drive list auto-refresh (5s polling), Eject replaces Unmount in context menu
+- Compact row heights for Detailed/List views
+- 7za path fix for packaged Linux builds
+
 ### v1.0.0-spumoni.3.3
 
 - macOS transparency fix, process exit fix
@@ -44,8 +53,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 - **Transparent UI**: Designed for seamless integration with modern compositors (Hyprland, Sway, etc.) and desktop environments.
 - **Dual Pane Navigation**: Efficient file management with side-by-side views.
-- **Core Operations**: Copy, move, delete, rename, and archive management.
-- **Drag and Drop**: Native drag to external apps, external drop with move/copy support.
+- **Core Operations**: Copy, move, delete, rename, and archive management (extract/compress only; browsing inside archives is not supported).
+- **Drag and Drop**: Drag files out to external apps (native drag). Drop files from external apps to copy into the current directory. Within Prism FM, drag to move (hold Ctrl to copy). Drag and drop into/from archives is not supported.
 - **Preview System**: Integrated image and text previews.
 - **Tagging**: Essential file organization with color-coded tags.
 - **Theme Customizer**: Built-in theme editor with presets (Default Glass, Nord Frost, Amber Glow, Forest Mist, Light Frost) and Wal theme import.

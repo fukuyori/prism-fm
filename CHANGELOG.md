@@ -2,6 +2,30 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [1.0.0-spumoni.3.4] - 2026-04-05
+
+### Added
+
+- **Drive auto-refresh** -- Drive list polls every 5 seconds, reflecting USB insertion/removal without manual refresh
+- **Eject drive** -- Context menu replaces "Unmount" with "Eject" (unmount + power-off) for safe device removal; uses `udisksctl power-off` with `eject` fallback
+
+### Changed
+
+- **File size right-aligned** -- Size column and header use `text-align: right` with thousands separator (e.g. `1,234 KB`)
+- **Column padding** -- Added `padding-left: 12px` to size, date, and added columns for visual separation
+- **Column resizers removed** -- Column widths are fixed at defaults (Size: 100px, Modified: 140px, Added: 140px); drag handles hidden
+- **Responsive breakpoints reworked**:
+  - 800px: File name truncates with ellipsis, all columns remain visible
+  - 650px: Modified/Added columns hidden, toolbar wraps
+  - 480px: Sidebar becomes overlay, all columns except icon/name hidden, compact UI
+- **Row height reduced** -- Detailed view padding `4px` → `2px`, list view `2px` → `1px`
+- **File name minimum width** -- `min-width: 8em` on `.file-name`, grid uses `minmax(8em, 1fr)` for name column
+
+### Fixed
+
+- **7za path on Linux** -- `path7za` now resolves to `app.asar.unpacked` instead of `app.asar`, fixing archive operations in packaged builds
+- **Responsive column visibility** -- Removed JS-based column hiding (`updateResponsiveColumns`); CSS media queries handle all breakpoints consistently
+
 ## [1.0.0-spumoni.3.3] - 2026-04-05
 
 ### Added
