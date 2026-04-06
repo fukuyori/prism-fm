@@ -2,6 +2,26 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [1.0.0-spumoni.3.8] - 2026-04-06
+
+### Added
+
+- **Batch delete with progress** -- New `batch-delete` IPC handler performs recursive deletion with file-count-based progress reporting; permanent delete now runs through the operation queue with progress bar and cancel support
+- **Stream copy for large files** -- Files over 100MB use `createReadStream`/`createWriteStream` with chunk-level progress updates instead of `fs.copyFile`; progress bar moves smoothly during large file copies
+- **Parallel copy for small files** -- Files under 1MB within a directory are copied in parallel (up to 6 concurrent) for improved throughput on directories with many small files
+- **Permission and timestamp preservation** -- `fs.chmod` and `fs.utimes` applied after copy to preserve original file mode, access time, and modification time; directories also preserved after children are copied
+- **Disk space pre-check** -- Total size of items to copy is compared against destination free space before starting; operation aborted early with clear error message if insufficient space
+- **Move copy verification** -- Cross-device moves (rename fallback) now verify destination file size matches source before deleting the original; mismatched copies are rolled back to protect source data
+- **Symlink-aware copy** -- `fs.stat` replaced with `fs.lstat` throughout scan and copy; symlinks are recreated via `fs.readlink`/`fs.symlink` instead of copying the target; prevents infinite loops from circular links
+- **Per-item error skip** -- Individual file errors during batch copy/move no longer abort the entire operation; errors are collected and reported in the result (e.g. "Copied 15 item(s), 2 failed")
+- **Version display** -- App version shown in Customize dialog header via `get-app-version` IPC
+- **Quit confirmation** -- Closing the window during an active file operation shows a warning dialog ("Operation in Progress") with Cancel / Quit Anyway options
+
+### Changed
+
+- **Delete flow** -- Permanent delete switched from sequential `deleteItem` calls to queued `batchDelete` operation with progress tracking; trash operation unchanged
+- **Notification detail** -- Copy/move/delete success notifications now include failure count when partial errors occurred
+
 ## [1.0.0-spumoni.3.7.1] - 2026-04-05
 
 ### Fixed

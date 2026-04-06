@@ -2,13 +2,26 @@
 
 A lightweight, transparent file manager for Linux, Windows, and macOS utilizing Electron.
 
-> **Fork of [compiledkernel-idk/prism-fm](https://github.com/compiledkernel-idk/prism-fm)** (original by tomiwaf)
+[日本語版 README はこちら](README.ja.md)
+
+> This project is a fork of [compiledkernel-idk/prism-fm](https://github.com/compiledkernel-idk/prism-fm). Based on our analysis of the commit history and codebase, prism-fm appears to have been forked from [TechyTechster/ez-fm](https://github.com/TechyTechster/ez-fm) and republished under a new name.
+>
+> We would like to express our sincere gratitude to both **TechyTechster**, the original creator of ez-fm, and **compiledkernel-idk**, who maintained and published prism-fm. The clean architecture and thoughtful design of the original project made it possible to extend it into a full cross-platform file manager. Thank you both for your contributions to the open-source community.
 
 ![Preview](file-manager.png)
 
 ## Recent Changes
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
+
+### v1.0.0-spumoni.3.8
+
+- File operation reliability: per-item error skip, symlink copy, move verification, disk space check
+- Stream copy for large files (100MB+) with smooth progress, parallel copy for small files (6x)
+- Batch delete with progress bar and cancel support
+- Permission and timestamp preservation on copy
+- Version display in Customize dialog
+- Quit confirmation when file operations are in progress
 
 ### v1.0.0-spumoni.3.7
 
@@ -174,6 +187,6 @@ windowrulev2 = opacity 0.9 0.8,class:^(prism-fm)$
 
 This fork is licensed under [GPL-3.0](LICENSE).
 
-The original Prism FM by tomiwaf is licensed under MIT. This fork includes the bundled [7za binary](https://www.7-zip.org/) (LGPL-2.1) for archive operations.
+The original ez-fm by TechyTechster / prism-fm by compiledkernel-idk is licensed under MIT. This fork includes the bundled [7za binary](https://www.7-zip.org/) (LGPL-2.1) for archive operations.
 
 See [LICENSES-THIRD-PARTY.md](LICENSES-THIRD-PARTY.md) for full third-party license details.

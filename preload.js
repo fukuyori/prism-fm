@@ -20,6 +20,7 @@ const fileManagerApi = {
   openTerminal: invoke("open-terminal"),
   openTerminalCustom: invoke("open-terminal-custom"),
   deleteItem: invoke("delete-item"),
+  batchDelete: invoke("batch-delete"),
   deleteItemSudo: invoke("delete-item-sudo"),
   trashItem: invoke("trash-item"),
   emptyRecycleBin: invoke("empty-recycle-bin"),
@@ -73,6 +74,7 @@ const fileManagerApi = {
   pickerCancel: send("picker-cancel"),
 
   platform: process.platform,
+  appVersion: invoke("get-app-version"),
 };
 
 contextBridge.exposeInMainWorld("fileManager", fileManagerApi);

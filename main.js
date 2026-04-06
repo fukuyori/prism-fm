@@ -48,6 +48,7 @@ app.name = "prism-fm";
 
 let mainWindow;
 const cancelOperations = new Set();
+let activeOperationCount = 0;
 
 function logCommandFailure(command, error) {
   if (!command) return;
@@ -341,6 +342,30 @@ function createWindow() {
   mainWindow.on("move", saveWindowBounds);
   mainWindow.on("maximize", saveWindowBounds);
   mainWindow.on("unmaximize", saveWindowBounds);
+
+  let forceQuit = false;
+  mainWindow.on("close", (e) => {
+    if (forceQuit) return;
+    if (cancelOperations.size > 0 || activeOperationCount > 0) {
+      e.preventDefault();
+      dialog
+        .showMessageBox(mainWindow, {
+          type: "warning",
+          buttons: ["Cancel", "Quit Anyway"],
+          defaultId: 0,
+          cancelId: 0,
+          title: "Operation in Progress",
+          message: "A file operation is still running. Quitting now may result in incomplete files.",
+        })
+        .then(({ response }) => {
+          if (response === 1) {
+            forceQuit = true;
+            mainWindow.close();
+          }
+        });
+      return;
+    }
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -725,6 +750,10 @@ ipcMain.handle("get-home-directory", () => {
   return app.getPath("home");
 });
 
+ipcMain.handle("get-app-version", () => {
+  return app.getVersion();
+});
+
 ipcMain.handle("get-wal-themes", async () => {
   try {
     return await collectWalThemes();
@@ -925,6 +954,88 @@ ipcMain.handle("open-terminal-custom", async (event, dirPath, command, args) => 
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("batch-delete", async (event, itemPaths, operationId) => {
+  activeOperationCount++;
+  const cancelKey = operationId ? String(operationId) : null;
+  const shouldCancel = () => Boolean(cancelKey && cancelOperations.has(cancelKey));
+
+  let totalFiles = 0;
+  let deletedFiles = 0;
+  const errors = [];
+
+  const countFiles = async (p) => {
+    try {
+      const stats = await fs.lstat(p);
+      if (stats.isDirectory()) {
+        const children = await fs.readdir(p);
+        for (const c of children) await countFiles(path.join(p, c));
+      } else {
+        totalFiles++;
+      }
+    } catch { totalFiles++; }
+  };
+
+  for (const p of itemPaths) {
+    await countFiles(p);
+  }
+  if (totalFiles === 0) totalFiles = 1;
+
+  const reportProgress = () => {
+    const percent = Math.min(100, (deletedFiles / totalFiles) * 100);
+    event.sender.send("file-operation-progress", percent);
+  };
+
+  const deleteRecursive = async (p) => {
+    if (shouldCancel()) {
+      throw Object.assign(new Error("Operation cancelled"), { code: "CANCELLED" });
+    }
+    try {
+      const stats = await fs.lstat(p);
+      if (stats.isDirectory()) {
+        const children = await fs.readdir(p);
+        for (const child of children) {
+          await deleteRecursive(path.join(p, child));
+        }
+        await fs.rmdir(p);
+      } else {
+        await fs.unlink(p);
+        deletedFiles++;
+        reportProgress();
+      }
+    } catch (err) {
+      if (err?.code === "CANCELLED") throw err;
+      // Fallback: try force rm
+      try {
+        await fs.rm(p, { recursive: true, force: true });
+        deletedFiles++;
+        reportProgress();
+      } catch (rmErr) {
+        errors.push({ path: p, error: rmErr.message });
+      }
+    }
+  };
+
+  try {
+    for (const p of itemPaths) {
+      await deleteRecursive(p);
+    }
+
+    return {
+      success: errors.length === 0 || deletedFiles > 0,
+      deleted: deletedFiles,
+      errors,
+    };
+  } catch (error) {
+    if (error?.code === "CANCELLED") {
+      return { success: false, cancelled: true, error: "Cancelled" };
+    }
+    return { success: false, error: error.message };
+  } finally {
+    activeOperationCount = Math.max(0, activeOperationCount - 1);
+    if (cancelKey) cancelOperations.delete(cancelKey);
   }
 });
 
@@ -1224,6 +1335,13 @@ ipcMain.handle("create-file", async (event, parentPath, fileName) => {
   }
 });
 
+function formatBytesCompact(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
 async function findUniquePath(desiredPath, kind) {
   const dir = path.dirname(desiredPath);
   const parsed = path.parse(desiredPath);
@@ -1335,6 +1453,7 @@ function askConflictResolution(sender, fileName, destPath, operationId) {
 }
 
 ipcMain.handle("batch-file-operation", async (event, items, operation, operationId) => {
+  activeOperationCount++;
   const cancelKey = operationId ? String(operationId) : null;
   const shouldCancel = () =>
     Boolean(cancelKey && cancelOperations.has(cancelKey));
@@ -1356,8 +1475,11 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
   const scan = async (p, rootItemPath) => {
     checkCancelled();
     try {
-      const stats = await fs.stat(p);
-      if (stats.isDirectory()) {
+      const stats = await fs.lstat(p);
+      if (stats.isSymbolicLink()) {
+        // Count symlink as a tiny item (no traversal)
+        totalFiles++;
+      } else if (stats.isDirectory()) {
         const children = await fs.readdir(p);
         for (const c of children) await scan(path.join(p, c), rootItemPath);
       } else {
@@ -1375,6 +1497,22 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
     await scan(item.source, item.source);
   }
 
+  // Disk space check for copy operations (skip for same-device moves via rename)
+  if (totalBytes > 0 && items.length > 0) {
+    try {
+      const destDir = path.dirname(items[0].dest);
+      const space = await getDiskSpace(destDir);
+      if (space && space.free > 0 && totalBytes > space.free) {
+        const needed = formatBytesCompact(totalBytes);
+        const available = formatBytesCompact(space.free);
+        return {
+          success: false,
+          error: `Not enough disk space. Need ${needed}, available ${available}.`,
+        };
+      }
+    } catch { }
+  }
+
   if (totalBytes === 0) totalBytes = 1;
 
   const reportProgress = () => {
@@ -1382,19 +1520,101 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
     event.sender.send("file-operation-progress", percent);
   };
 
+  const preserveMetadata = async (src, dest, stats) => {
+    try {
+      if (!stats.isSymbolicLink()) {
+        await fs.chmod(dest, stats.mode);
+      }
+    } catch { }
+    try {
+      if (!stats.isSymbolicLink()) {
+        await fs.utimes(dest, stats.atime, stats.mtime);
+      }
+    } catch { }
+  };
+
+  const STREAM_THRESHOLD = 100 * 1024 * 1024; // 100MB
+  const PARALLEL_THRESHOLD = 1024 * 1024; // 1MB
+  const PARALLEL_LIMIT = 6;
+
+  const streamCopy = (src, dest) => {
+    return new Promise((resolve, reject) => {
+      const rs = fsSync.createReadStream(src);
+      const ws = fsSync.createWriteStream(dest);
+      let copied = 0;
+      rs.on("data", (chunk) => {
+        if (shouldCancel()) { rs.destroy(); ws.destroy(); reject(Object.assign(new Error("Operation cancelled"), { code: "CANCELLED" })); return; }
+        copied += chunk.length;
+        processedBytes += chunk.length;
+        reportProgress();
+      });
+      rs.on("error", (err) => { ws.destroy(); reject(err); });
+      ws.on("error", (err) => { rs.destroy(); reject(err); });
+      ws.on("finish", resolve);
+      rs.pipe(ws);
+    });
+  };
+
   const copyRecursive = async (src, dest) => {
     checkCancelled();
-    const stats = await fs.stat(src);
-    if (stats.isDirectory()) {
+    const stats = await fs.lstat(src);
+    if (stats.isSymbolicLink()) {
+      const linkTarget = await fs.readlink(src);
+      try { await fs.unlink(dest); } catch { }
+      await fs.symlink(linkTarget, dest);
+      processedFiles++;
+      reportProgress();
+    } else if (stats.isDirectory()) {
       await fs.mkdir(dest, { recursive: true });
       const children = await fs.readdir(src);
+
+      // Separate small files for parallel copy
+      const smallFiles = [];
+      const rest = [];
       for (const child of children) {
+        const childSrc = path.join(src, child);
+        try {
+          const cs = await fs.lstat(childSrc);
+          if (!cs.isDirectory() && !cs.isSymbolicLink() && cs.size <= PARALLEL_THRESHOLD) {
+            smallFiles.push({ child, stats: cs });
+          } else {
+            rest.push(child);
+          }
+        } catch {
+          rest.push(child);
+        }
+      }
+
+      // Copy small files in parallel
+      for (let i = 0; i < smallFiles.length; i += PARALLEL_LIMIT) {
+        checkCancelled();
+        const batch = smallFiles.slice(i, i + PARALLEL_LIMIT);
+        await Promise.all(batch.map(async ({ child, stats: cs }) => {
+          const childSrc = path.join(src, child);
+          const childDest = path.join(dest, child);
+          await fs.copyFile(childSrc, childDest);
+          await preserveMetadata(childSrc, childDest, cs);
+          processedBytes += cs.size;
+          processedFiles++;
+          reportProgress();
+        }));
+      }
+
+      // Copy rest sequentially
+      for (const child of rest) {
         await copyRecursive(path.join(src, child), path.join(dest, child));
       }
+
+      await preserveMetadata(src, dest, stats);
     } else {
       checkCancelled();
-      await fs.copyFile(src, dest);
-      processedBytes += stats.size;
+      if (stats.size >= STREAM_THRESHOLD) {
+        await streamCopy(src, dest);
+      } else {
+        await fs.copyFile(src, dest);
+        processedBytes += stats.size;
+      }
+      await preserveMetadata(src, dest, stats);
       processedFiles++;
       reportProgress();
     }
@@ -1445,42 +1665,85 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
     return item.dest; // replace
   };
 
+  const errors = [];
+  let completedItems = 0;
+  let skippedItems = 0;
+
   try {
     for (const item of items) {
       checkCancelled();
 
       const finalDest = await resolveConflict(item);
       if (finalDest === null) {
-        // Skip this item
+        skippedItems++;
         const size = itemSizes.get(item.source) || 0;
         processedBytes += size;
         reportProgress();
         continue;
       }
 
-      if (operation === "copy") {
-        await copyRecursive(item.source, finalDest);
-      } else {
-        try {
-          checkCancelled();
-          await fs.rename(item.source, finalDest);
-
-          const size = itemSizes.get(item.source) || 0;
-          processedBytes += size;
-          reportProgress();
-        } catch (err) {
+      try {
+        if (operation === "copy") {
           await copyRecursive(item.source, finalDest);
-          await fs.rm(item.source, { recursive: true, force: true });
+        } else {
+          try {
+            checkCancelled();
+            await fs.rename(item.source, finalDest);
+
+            const size = itemSizes.get(item.source) || 0;
+            processedBytes += size;
+            reportProgress();
+          } catch (renameErr) {
+            // Cross-device move: copy then verify before deleting source
+            await copyRecursive(item.source, finalDest);
+
+            // Verify copy by comparing sizes
+            const srcStats = await fs.lstat(item.source);
+            if (srcStats.isDirectory()) {
+              // For directories, just check dest exists
+              await fs.access(finalDest);
+            } else if (!srcStats.isSymbolicLink()) {
+              const destStats = await fs.lstat(finalDest);
+              if (destStats.size !== srcStats.size) {
+                await fs.rm(finalDest, { recursive: true, force: true });
+                throw new Error(`Size mismatch after copy: ${path.basename(item.source)}`);
+              }
+            }
+
+            await fs.rm(item.source, { recursive: true, force: true });
+          }
         }
+        completedItems++;
+      } catch (itemErr) {
+        if (itemErr?.code === "CANCELLED") throw itemErr;
+        errors.push({ path: item.source, error: itemErr.message });
+        const size = itemSizes.get(item.source) || 0;
+        processedBytes += size;
+        reportProgress();
       }
     }
-    return { success: true };
+
+    if (errors.length > 0 && completedItems === 0) {
+      return {
+        success: false,
+        error: `All ${errors.length} item(s) failed: ${errors[0].error}`,
+        errors,
+      };
+    }
+
+    return {
+      success: true,
+      completed: completedItems,
+      skipped: skippedItems,
+      errors,
+    };
   } catch (error) {
     if (error?.code === "CANCELLED") {
       return { success: false, cancelled: true, error: "Cancelled" };
     }
     return { success: false, error: error.message };
   } finally {
+    activeOperationCount = Math.max(0, activeOperationCount - 1);
     if (cancelKey) {
       cancelOperations.delete(cancelKey);
     }

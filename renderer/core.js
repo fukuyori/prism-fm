@@ -528,6 +528,12 @@ function clearThumbnailObserver() {
 function openThemeCustomizer() {
   themeModal = document.getElementById("theme-modal");
   if (themeModal) {
+    const versionEl = document.getElementById("app-version");
+    if (versionEl && window.fileManager?.appVersion) {
+      window.fileManager.appVersion().then((v) => {
+        versionEl.textContent = "v" + v;
+      }).catch(() => {});
+    }
     themeSavedOverridesSnapshot = { ...themeOverrides };
     themeDraftOverrides = { ...themeOverrides };
     themeModal.classList.add("visible");

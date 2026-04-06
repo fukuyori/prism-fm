@@ -76,7 +76,7 @@ async function paste() {
         await window.fileManager.cancelOperation(op.id);
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       if (opType === "copy") {
         const copiedPaths = batchItems.map((item) => item.dest);
         pushUndo({
@@ -101,9 +101,16 @@ async function paste() {
           },
         });
       }
-      showNotification(
-        `${opType === "copy" ? "Copied" : "Moved"} ${itemsToPaste.length} item(s)`,
-      );
+      const verb = opType === "copy" ? "Copied" : "Moved";
+      const errCount = result?.errors?.length || 0;
+      if (errCount > 0) {
+        showNotification(
+          `${verb} ${result.completed} item(s), ${errCount} failed`,
+          "error",
+        );
+      } else {
+        showNotification(`${verb} ${itemsToPaste.length} item(s)`);
+      }
       refresh();
       if (opType === "cut" && sourcePaneId && sourcePaneId !== activePaneId) {
         await refreshPane(sourcePaneId);
@@ -199,7 +206,7 @@ async function handleFileDrop(
             await window.fileManager.cancelOperation(op.id);
           }
         },
-        onSuccess: async () => {
+        onSuccess: async (result) => {
           if (isCopy) {
             const copiedPaths = batchItems.map((item) => item.dest);
             pushUndo({
@@ -224,9 +231,16 @@ async function handleFileDrop(
               },
             });
           }
-          showNotification(
-            `${isCopy ? "Copied" : "Moved"} ${batchItems.length} item(s)`,
-          );
+          const verb = isCopy ? "Copied" : "Moved";
+          const errCount = result?.errors?.length || 0;
+          if (errCount > 0) {
+            showNotification(
+              `${verb} ${result.completed} item(s), ${errCount} failed`,
+              "error",
+            );
+          } else {
+            showNotification(`${verb} ${batchItems.length} item(s)`);
+          }
           refresh();
           if (!isCopy && sourcePaneId && sourcePaneId !== targetPaneId) {
             await refreshPane(sourcePaneId);
@@ -338,46 +352,49 @@ async function deleteSelected(options = {}) {
     if (!confirmed) return;
   }
 
-  let sudoPassword = null;
-  let sudoCancelled = false;
-  const trashedPaths = [];
+  const pathsToDelete = Array.from(selectedItems);
+  selectedItems.clear();
 
-  try {
-    for (const p of selectedItems) {
-      if (choice === "permanent") {
-        let result = await window.fileManager.deleteItem(p);
-
-        if (
-          !result.success &&
-          (result.code === "EACCES" || result.code === "EPERM")
-        ) {
-          if (!sudoPassword && !sudoCancelled) {
-            const input = await showTextInputModal(
-              "Permission Denied",
-              `Privileges required to delete "${p.split(/[/\\]/).pop()}".\nEnter sudo password:`,
-              "",
-              "Delete",
-              "password",
-            );
-            if (input !== null) {
-              sudoPassword = input;
-            } else {
-              sudoCancelled = true;
-            }
-          }
-
-          if (sudoPassword) {
-            result = await window.fileManager.deleteItemSudo(p, sudoPassword);
-            if (!result.success) {
-              sudoPassword = null;
-            }
-          }
+  if (choice === "permanent") {
+    enqueueOperation({
+      label: formatOperationLabel("Delete", pathsToDelete.length),
+      usesProgress: true,
+      run: async (op) => {
+        const result = await window.fileManager.batchDelete(pathsToDelete, op.id);
+        if (!result || !result.success) {
+          const error = new Error(result?.error || "Delete failed");
+          if (result?.cancelled) error.cancelled = true;
+          throw error;
         }
-
-        if (!result.success) {
-          showNotification(`Failed to delete: ${result.error}`, "error");
+        return result;
+      },
+      cancel: async (op) => {
+        if (window.fileManager.cancelOperation) {
+          await window.fileManager.cancelOperation(op.id);
         }
-      } else {
+      },
+      onSuccess: async (result) => {
+        const errCount = result?.errors?.length || 0;
+        if (errCount > 0) {
+          showNotification(
+            `Deleted ${result.deleted} item(s), ${errCount} failed`,
+            "error",
+          );
+        } else {
+          showNotification(`Permanently deleted ${pathsToDelete.length} item(s)`);
+        }
+        refresh();
+      },
+      onError: (error) => {
+        if (!error?.cancelled) {
+          showNotification(error?.message || "Delete failed", "error");
+        }
+      },
+    });
+  } else {
+    const trashedPaths = [];
+    try {
+      for (const p of pathsToDelete) {
         const result = await window.fileManager.trashItem(p);
         if (result && result.success) {
           trashedPaths.push(p);
@@ -388,40 +405,35 @@ async function deleteSelected(options = {}) {
           );
         }
       }
-    }
 
-    if (choice === "trash" && trashedPaths.length > 0) {
-      pushUndo({
-        label: formatUndoLabel("Move to Trash", trashedPaths.length),
-        successMessage: "Undid move to Trash",
-        undo: async () => {
-          const restoreResult = await window.fileManager.restoreTrashItems(
-            trashedPaths,
-          );
-          if (!restoreResult || !restoreResult.success) {
-            throw new Error(
-              restoreResult?.error || "Undo restore from Trash failed",
+      if (trashedPaths.length > 0) {
+        pushUndo({
+          label: formatUndoLabel("Move to Trash", trashedPaths.length),
+          successMessage: "Undid move to Trash",
+          undo: async () => {
+            const restoreResult = await window.fileManager.restoreTrashItems(
+              trashedPaths,
             );
-          }
-          if (restoreResult.failed && restoreResult.failed.length > 0) {
-            throw new Error(
-              `Undo failed for ${restoreResult.failed.length} item(s)`,
-            );
-          }
-          refresh();
-        },
-      });
-    }
+            if (!restoreResult || !restoreResult.success) {
+              throw new Error(
+                restoreResult?.error || "Undo restore from Trash failed",
+              );
+            }
+            if (restoreResult.failed && restoreResult.failed.length > 0) {
+              throw new Error(
+                `Undo failed for ${restoreResult.failed.length} item(s)`,
+              );
+            }
+            refresh();
+          },
+        });
+      }
 
-    showNotification(
-      choice === "permanent"
-        ? `Permanently deleted ${count} item(s)`
-        : `Moved ${count} item(s) to Trash`,
-    );
-    selectedItems.clear();
-    refresh();
-  } catch (error) {
-    showNotification("Error: " + error.message, "error");
+      showNotification(`Moved ${trashedPaths.length} item(s) to Trash`);
+      refresh();
+    } catch (error) {
+      showNotification("Error: " + error.message, "error");
+    }
   }
 }
 
