@@ -45,6 +45,13 @@ function normalizePathForCompare(p) {
   return n === "" ? "/" : n;
 }
 
+// Drag modifier that turns a move into a copy. macOS convention is Option
+// (Ctrl+drag is the context-menu modifier there); everywhere else Ctrl.
+function isCopyModifier(e) {
+  if (!e) return false;
+  return window.fileManager?.platform === "darwin" ? Boolean(e.altKey) : Boolean(e.ctrlKey);
+}
+
 function isPathWithin(basePath, candidatePath) {
   if (!basePath || !candidatePath) return false;
   const base = normalizePathForCompare(basePath);

@@ -367,7 +367,7 @@ function setupFileListHandlers() {
         }
       }
       e.preventDefault();
-      e.dataTransfer.dropEffect = e.ctrlKey ? "copy" : "move";
+      e.dataTransfer.dropEffect = isCopyModifier(e) ? "copy" : "move";
 
       const rect = listEl.getBoundingClientRect();
       const edgeSize = 50;
@@ -425,7 +425,7 @@ function setupFileListHandlers() {
       if (targetFolder?.dataset.isDirectory === "true") return;
 
       if (isDragging && draggedItems.length > 0) {
-        const isCopy = e.ctrlKey;
+        const isCopy = isCopyModifier(e);
         const paths = [...draggedItems];
         const srcPane = dragSourcePaneId;
         cleanupDragState();
@@ -438,7 +438,7 @@ function setupFileListHandlers() {
           (f) => f.path,
         );
         cleanupDragState();
-        await handleFileDrop(externalPaths, currentPath, e.ctrlKey, null, activePaneId);
+        await handleFileDrop(externalPaths, currentPath, isCopyModifier(e), null, activePaneId);
       }
     });
 
@@ -727,7 +727,7 @@ function setupQuickAccess() {
       const tagColor = sidebarItem.dataset.tagColor;
 
       if (pinnedPath || builtinKey) {
-        e.dataTransfer.dropEffect = e.ctrlKey ? "copy" : "move";
+        e.dataTransfer.dropEffect = isCopyModifier(e) ? "copy" : "move";
         sidebarItem.classList.add("drop-target");
         sidebar.classList.remove("drag-over");
 
@@ -819,7 +819,7 @@ function setupQuickAccess() {
       }
 
       if (targetPath) {
-        const isCopy = e.ctrlKey;
+        const isCopy = isCopyModifier(e);
         await handleFileDrop(
           pathsToProcess,
           targetPath,

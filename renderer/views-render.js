@@ -373,7 +373,7 @@ function setupFolderDropHandlers(element, item) {
     if (draggedItems.includes(item.path)) return;
     if (draggedItems.some((p) => item.path.startsWith(p + "/"))) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = e.ctrlKey ? "copy" : "move";
+    e.dataTransfer.dropEffect = isCopyModifier(e) ? "copy" : "move";
     element.classList.add("drop-target");
     const paneId = element.closest(".file-pane")?.dataset.pane;
     if (paneId && paneId !== activePaneId) {
@@ -420,7 +420,7 @@ function setupFolderDropHandlers(element, item) {
     }
 
     if (isDragging && draggedItems.length > 0) {
-      const isCopy = e.ctrlKey;
+      const isCopy = isCopyModifier(e);
       const paths = [...draggedItems];
       const srcPane = dragSourcePaneId;
       cleanupDragState();
@@ -431,7 +431,7 @@ function setupFolderDropHandlers(element, item) {
     if (e.dataTransfer.files.length > 0) {
       const externalPaths = Array.from(e.dataTransfer.files).map((f) => f.path);
       cleanupDragState();
-      await handleFileDrop(externalPaths, item.path, e.ctrlKey, null, activePaneId);
+      await handleFileDrop(externalPaths, item.path, isCopyModifier(e), null, activePaneId);
     }
   });
 }

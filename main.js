@@ -343,27 +343,16 @@ function createWindow() {
   mainWindow.on("maximize", saveWindowBounds);
   mainWindow.on("unmaximize", saveWindowBounds);
 
-  let forceQuit = false;
   mainWindow.on("close", (e) => {
     if (forceQuit) return;
     if (cancelOperations.size > 0 || activeOperationCount > 0) {
       e.preventDefault();
-      dialog
-        .showMessageBox(mainWindow, {
-          type: "warning",
-          buttons: ["Cancel", "Quit Anyway"],
-          defaultId: 0,
-          cancelId: 0,
-          title: "Operation in Progress",
-          message: "A file operation is still running. Quitting now may result in incomplete files.",
-        })
-        .then(({ response }) => {
-          if (response === 1) {
-            forceQuit = true;
-            mainWindow.close();
-          }
-        });
-      return;
+      confirmQuitDuringOperation().then((quit) => {
+        if (quit) {
+          forceQuit = true;
+          mainWindow?.close();
+        }
+      });
     }
   });
 
@@ -505,11 +494,43 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-app.on("before-quit", () => {
-  if (mainWindow) {
-    mainWindow.removeAllListeners("close");
-    mainWindow.close();
+// Shared by the window close button and app.quit() (Cmd+Q, dock menu,
+// SIGTERM handler, …) so the "operation in progress" confirmation cannot be
+// bypassed by quitting through the app menu.
+let forceQuit = false;
+let quitDialogOpen = false;
+async function confirmQuitDuringOperation() {
+  if (quitDialogOpen) return false;
+  quitDialogOpen = true;
+  try {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      buttons: ["Cancel", "Quit Anyway"],
+      defaultId: 0,
+      cancelId: 0,
+      title: "Operation in Progress",
+      message: "A file operation is still running. Quitting now may result in incomplete files.",
+    });
+    return response === 1;
+  } finally {
+    quitDialogOpen = false;
   }
+}
+
+app.on("before-quit", (e) => {
+  if (forceQuit) return;
+  if (mainWindow && !mainWindow.isDestroyed() &&
+      (cancelOperations.size > 0 || activeOperationCount > 0)) {
+    e.preventDefault();
+    confirmQuitDuringOperation().then((quit) => {
+      if (quit) {
+        forceQuit = true;
+        app.quit();
+      }
+    });
+    return;
+  }
+  forceQuit = true;
 });
 
 app.on("will-quit", () => {

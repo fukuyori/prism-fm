@@ -519,7 +519,7 @@ function attachDriveDragDropHandlers(row, drive) {
     }
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = e.ctrlKey ? "copy" : "move";
+    e.dataTransfer.dropEffect = isCopyModifier(e) ? "copy" : "move";
     row.classList.add("drop-target");
 
     if (!dragHoverTimer) {
@@ -560,7 +560,7 @@ function attachDriveDragDropHandlers(row, drive) {
     }
 
     if (pathsToProcess.length > 0) {
-      const isCopy = e.ctrlKey;
+      const isCopy = isCopyModifier(e);
       await handleFileDrop(
         pathsToProcess,
         drive.path,

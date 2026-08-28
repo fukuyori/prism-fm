@@ -51,7 +51,16 @@ async function paste() {
       "error",
     );
   }
-  if (batchItems.length === 0) return;
+  if (batchItems.length === 0) {
+    if (rejected.length === 0) {
+      showNotification(
+        opType === "copy"
+          ? "Items are already in this folder — nothing to copy"
+          : "Items are already in this folder — nothing to move",
+      );
+    }
+    return;
+  }
 
   const label =
     opType === "copy"
@@ -81,16 +90,16 @@ async function paste() {
     },
     onSuccess: async (result) => {
       pushTransferUndo(opType === "copy", result);
-      const verb = opType === "copy" ? "Copied" : "Moved";
-      const errCount = result?.errors?.length || 0;
-      if (errCount > 0) {
-        showNotification(
-          `${verb} ${result.completed} item(s), ${errCount} failed`,
-          "error",
-        );
-      } else {
-        showNotification(`${verb} ${itemsToPaste.length} item(s)`);
+      // A cut is consumed only once the move succeeded; clearing at enqueue
+      // time meant that cancelling the conflict dialog (or a failure) lost
+      // the clipboard and the user had to re-select and cut again.
+      if (opType === "cut" && clipboardOperation === "cut") {
+        clipboardItems = [];
+        clipboardOperation = null;
+        clipboardSourcePaneId = null;
       }
+      const verb = opType === "copy" ? "Copied" : "Moved";
+      showNotification(...transferResultMessage(verb, result, batchItems.length));
       const dirs = [targetDir];
       if (opType === "cut") {
         for (const it of batchItems) dirs.push(localParsePath(it.source).dir);
@@ -103,12 +112,6 @@ async function paste() {
       }
     },
   });
-
-  if (opType === "cut") {
-    clipboardItems = [];
-    clipboardOperation = null;
-    clipboardSourcePaneId = null;
-  }
 
   showNotification(
     `${opType === "copy" ? "Copy" : "Move"} queued (${itemsToPaste.length} item(s))`,
@@ -152,6 +155,18 @@ function buildTransferItems(sourcePaths, targetDir) {
     items.push({ source: sourcePath, dest: destPath });
   }
   return { items, rejected };
+}
+
+// [message, type] for the completion notification, including skipped and
+// failed counts (skips come from the conflict dialog).
+function transferResultMessage(verb, result, requested) {
+  const errCount = result?.errors?.length || 0;
+  const skipped = result?.skipped || 0;
+  const completed = typeof result?.completed === "number" ? result.completed : requested;
+  const parts = [`${verb} ${completed} item(s)`];
+  if (skipped > 0) parts.push(`${skipped} skipped`);
+  if (errCount > 0) parts.push(`${errCount} failed`);
+  return [parts.join(", "), errCount > 0 ? "error" : "info"];
 }
 
 // Register an undo entry from a batch-file-operation result. Only items
@@ -235,15 +250,7 @@ async function handleFileDrop(
         onSuccess: async (result) => {
           pushTransferUndo(isCopy, result);
           const verb = isCopy ? "Copied" : "Moved";
-          const errCount = result?.errors?.length || 0;
-          if (errCount > 0) {
-            showNotification(
-              `${verb} ${result.completed} item(s), ${errCount} failed`,
-              "error",
-            );
-          } else {
-            showNotification(`${verb} ${batchItems.length} item(s)`);
-          }
+          showNotification(...transferResultMessage(verb, result, batchItems.length));
           const dirs = [targetDir];
           if (!isCopy) {
             for (const it of batchItems) dirs.push(localParsePath(it.source).dir);
@@ -861,10 +868,18 @@ function handleKeyboard(e) {
       case "Backspace":
         goUp();
         break;
-      case "Escape":
+      case "Escape": {
+        const menuOpen =
+          (typeof activeMenuType !== "undefined" && activeMenuType) ||
+          (typeof contextMenu !== "undefined" && contextMenu?.classList.contains("visible"));
+        if (menuOpen && typeof closeAllMenus === "function") {
+          closeAllMenus();
+          break;
+        }
         selectedItems.clear();
         updateSelectionUI();
         break;
+      }
     }
   }
 }

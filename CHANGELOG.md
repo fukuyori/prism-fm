@@ -23,6 +23,12 @@ All notable changes to Prism FM are documented in this file.
 - **`create-folder` / `create-file` with an empty or path-like name** -- names are validated (empty name previously created `parent (1)` next to the parent)
 - **`extract-archive`** -- never extracts into an existing folder/file (unique name chosen instead, so Undo can't delete pre-existing content); output silenced and `maxBuffer` raised so large archives no longer get the child killed at 1MB of stdout; failed extraction removes the folder it created; more archive extensions recognised (`.tbz`, `.txz`, `.zst`, `.iso`, …)
 - **`compress-items`** -- refuses to write over an existing archive (7za would have *updated* it, leaving stale entries); `--` guards against `-x`/`@list` file names being parsed as switches; archive name validated in the renderer
+- **macOS drag-copy modifier** -- copy-on-drag now uses Option on macOS (Ctrl elsewhere) via `isCopyModifier()`; Ctrl+drag on macOS conflicted with the context-menu modifier. README updated
+- **Cmd+Q bypassed the "operation in progress" confirmation** -- `before-quit` no longer strips the window's close handler; both paths share `confirmQuitDuringOperation()`
+- **Cut clipboard lost on cancel/failure** -- the cut clipboard is cleared only after the move succeeds, so cancelling the conflict dialog no longer requires re-selecting and cutting again
+- **Silent no-op paste** -- pasting items into the folder they already live in now says so instead of reporting "Copied N item(s)"; completion notifications include the skipped count from the conflict dialog
+- **Escape** -- closes an open context/view/settings menu before clearing the selection
+- **Confirm dialogs** -- Enter confirms, Escape cancels, confirm button is focused on open (keyboard-only use was impossible)
 - **Operations panel stub shadowed the real implementation** -- leftover `updateOpsPanel`/`scheduleOpsRender` stubs after `scheduleIdle()` won by declaration order; removed along with dead duplicate progress/escape helpers in core.js
 
 ## [1.0.0-spumoni.4.0] - 2026-08-29

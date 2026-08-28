@@ -1908,9 +1908,20 @@ function showConfirmModal(title, message, confirmLabel = "Confirm") {
     `;
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
-    const finish = (val) => { document.body.removeChild(overlay); resolve(val); };
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
+      else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); finish(true); }
+    };
+    const finish = (val) => {
+      document.removeEventListener("keydown", onKey, true);
+      if (overlay.parentNode) document.body.removeChild(overlay);
+      resolve(val);
+    };
+    document.addEventListener("keydown", onKey, true);
     dialog.querySelector("#fm-conf-cancel").onclick = () => finish(false);
-    dialog.querySelector("#fm-conf-ok").onclick = () => finish(true);
+    const okBtn = dialog.querySelector("#fm-conf-ok");
+    okBtn.onclick = () => finish(true);
+    okBtn.focus();
   });
 }
 
