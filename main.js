@@ -1491,13 +1491,16 @@ ipcMain.handle("move-item", async (event, sourcePath, destPath) => {
 });
 
 ipcMain.on("start-drag", (event, filePaths) => {
-  if (!filePaths || !filePaths.length) return;
+  if (!Array.isArray(filePaths) || filePaths.length === 0) return;
   const icon = path.join(__dirname, "icon.png");
-  event.sender.startDrag({
-    files: filePaths,
-    icon,
-  });
-  event.sender.send("drag-ended");
+  try {
+    // Synchronous until the drag ends on Windows/macOS; returns at once
+    // on Linux (the renderer accounts for that).
+    event.sender.startDrag({ files: filePaths, icon });
+  } catch (error) {
+    console.warn("startDrag failed:", error?.message || error);
+  }
+  if (!event.sender.isDestroyed()) event.sender.send("drag-ended");
 });
 
 ipcMain.handle("cancel-operation", async (event, operationId) => {

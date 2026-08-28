@@ -332,6 +332,16 @@ function setupDragHandlers(element, item) {
   element.draggable = true;
 
   element.addEventListener("dragstart", (e) => {
+    // Native drag only (Electron's documented pattern: preventDefault the
+    // HTML5 session, then webContents.startDrag). Running both at once —
+    // as 3.7 did — starts two OS drag sessions from one gesture: on
+    // Windows/macOS startDrag blocks in a nested loop while the HTML5 drag
+    // is initialising (the crash 3.1 worked around), and on Linux the two
+    // sessions fight over the pointer grab. A native drag still delivers
+    // dragover/drop to our own window with the files in dataTransfer.files,
+    // so pane-to-pane drops keep working through the same handlers.
+    e.preventDefault();
+
     isDragging = true;
     const paneId = element.closest(".file-pane")?.dataset.pane;
     if (paneId && paneId !== activePaneId) {
@@ -345,14 +355,18 @@ function setupDragHandlers(element, item) {
     }
     element.classList.add("dragging");
 
-    // Set data for HTML5 drag (internal pane-to-pane and external drop)
-    e.dataTransfer.effectAllowed = "copyMove";
-    e.dataTransfer.setData("text/plain", draggedItems.join("\n"));
-    e.dataTransfer.setData("application/x-prism-drag", "1");
-
-    // Also initiate native Electron drag for external apps
     window.fileManager.startDrag(draggedItems);
   });
+}
+
+// Paths of files dropped from outside the app (or from our own native
+// drag). Centralised because `File.path` is Electron-specific and removed
+// in Electron 32 — when upgrading, switch this to webUtils.getPathForFile
+// exposed through preload.
+function getDroppedPaths(e) {
+  const files = e?.dataTransfer?.files;
+  if (!files || files.length === 0) return [];
+  return Array.from(files).map((f) => f.path).filter(Boolean);
 }
 
 function cleanupDragState() {
@@ -428,8 +442,8 @@ function setupFolderDropHandlers(element, item) {
       return;
     }
 
-    if (e.dataTransfer.files.length > 0) {
-      const externalPaths = Array.from(e.dataTransfer.files).map((f) => f.path);
+    const externalPaths = getDroppedPaths(e);
+    if (externalPaths.length > 0) {
       cleanupDragState();
       await handleFileDrop(externalPaths, item.path, isCopyModifier(e), null, activePaneId);
     }

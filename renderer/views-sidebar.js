@@ -553,10 +553,8 @@ function attachDriveDragDropHandlers(row, drive) {
     let pathsToProcess = [];
     if (draggedItems.length > 0) {
       pathsToProcess = [...draggedItems];
-    } else if (e.dataTransfer.files.length > 0) {
-      pathsToProcess = Array.from(e.dataTransfer.files)
-        .map((f) => f.path)
-        .filter(Boolean);
+    } else {
+      pathsToProcess = getDroppedPaths(e);
     }
 
     if (pathsToProcess.length > 0) {

@@ -59,10 +59,29 @@ function setupSidebarToggle() {
     }
   });
 
+  // "drag-ended" is sent when webContents.startDrag returns. On Windows and
+  // macOS that is when the OS drag finished; on Linux startDrag returns
+  // immediately, so the message arrives while the drag is still in
+  // progress and must NOT clear the drag state (that made every
+  // pane-to-pane drop on Linux fall into the "external files" branch with
+  // an empty list, i.e. do nothing).
+  const isLinux = window.fileManager.platform === "linux";
   window.fileManager.onDragEnded(() => {
+    if (isLinux) return;
     setTimeout(() => {
       if (isDragging) cleanupDragState();
     }, 100);
+  });
+
+  // Fallback end-of-drag detection for every platform: once the pointer
+  // moves over our window with no button held, the drag is over (it was
+  // dropped elsewhere or cancelled). Drops inside the app clean up in
+  // their own handlers.
+  document.addEventListener("mousemove", (e) => {
+    if (isDragging && e.buttons === 0) cleanupDragState();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (isDragging && e.key === "Escape") cleanupDragState();
   });
 }
 
@@ -433,10 +452,8 @@ function setupFileListHandlers() {
         return;
       }
 
-      if (e.dataTransfer.files.length > 0) {
-        const externalPaths = Array.from(e.dataTransfer.files).map(
-          (f) => f.path,
-        );
+      const externalPaths = getDroppedPaths(e);
+      if (externalPaths.length > 0) {
         cleanupDragState();
         await handleFileDrop(externalPaths, currentPath, isCopyModifier(e), null, activePaneId);
       }
@@ -796,10 +813,8 @@ function setupQuickAccess() {
     let pathsToProcess = [];
     if (draggedItems.length > 0) {
       pathsToProcess = [...draggedItems];
-    } else if (e.dataTransfer.files.length > 0) {
-      pathsToProcess = Array.from(e.dataTransfer.files)
-        .map((f) => f.path)
-        .filter(Boolean);
+    } else {
+      pathsToProcess = getDroppedPaths(e);
     }
 
     if (pathsToProcess.length === 0) return;
