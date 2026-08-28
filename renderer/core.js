@@ -617,19 +617,6 @@ function scheduleIdle(callback) {
   }
 }
 
-function updateOpsPanel() {
-  // Stub for operations panel update
-  const list = document.getElementById("ops-queue-list");
-  if (list) {
-    // Basic rendering if needed, or leave empty to prevent crash
-  }
-}
-
-function scheduleOpsRender() {
-  if (typeof updateOpsPanel === "function") {
-    requestAnimationFrame(updateOpsPanel);
-  }
-}
 
 function setupThumbnailObserver() {
   if (viewMode !== "thumbnail") return;
@@ -947,13 +934,6 @@ function validateNewItemName(rawName) {
   return { ok: true, name };
 }
 
-function escapeHtmlAttr(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
 
 function readLocalStorageBool(key, fallback) {
   try {
@@ -2063,28 +2043,3 @@ async function runBatchOperation(items, operation) {
   if (!result || !result.success) throw new Error(result?.error || "Batch operation failed");
 }
 
-function startProgress() {
-  if (progressBarContainer) progressBarContainer.style.display = "block";
-  realProgress = 0;
-  fakeProgress = 0;
-  updateProgressBar();
-  progressInterval = setInterval(() => {
-    fakeProgress = Math.min(95, fakeProgress + (100 - fakeProgress) * 0.05);
-    updateProgressBar();
-  }, 200);
-}
-
-function finishProgress() {
-  clearInterval(progressInterval);
-  realProgress = 100;
-  fakeProgress = 100;
-  updateProgressBar();
-  setTimeout(() => {
-    if (progressBarContainer) progressBarContainer.style.display = "none";
-  }, 500);
-}
-
-function updateProgressBar() {
-  const p = Math.max(realProgress, fakeProgress);
-  if (progressBarFill) progressBarFill.style.width = p + "%";
-}
