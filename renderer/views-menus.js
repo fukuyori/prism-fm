@@ -791,8 +791,14 @@ function renderContextMenu() {
 
 
 
+var progressHideTimer = null;
+
 function startProgress() {
   if (progressInterval) clearInterval(progressInterval);
+  if (progressHideTimer) {
+    clearTimeout(progressHideTimer);
+    progressHideTimer = null;
+  }
   realProgress = 0;
   fakeProgress = 0;
 
@@ -829,7 +835,9 @@ function finishProgress() {
   realProgress = 100;
   updateProgressDisplay();
 
-  setTimeout(() => {
+  if (progressHideTimer) clearTimeout(progressHideTimer);
+  progressHideTimer = setTimeout(() => {
+    progressHideTimer = null;
     if (progressBarContainer) progressBarContainer.style.display = "none";
     if (progressBarFill) progressBarFill.style.width = "0%";
     realProgress = 0;

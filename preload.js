@@ -32,6 +32,7 @@ const fileManagerApi = {
   moveItem: invoke("move-item"),
   getItemInfo: invoke("get-item-info"),
   readFilePreview: invoke("read-file-preview"),
+  getImageDataUri: invoke("get-image-data-uri"),
   getImageMetadata: invoke("get-image-metadata"),
   getVideoMetadata: invoke("get-video-metadata"),
   getFileType: invoke("get-file-type"),

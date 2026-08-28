@@ -449,14 +449,164 @@ function setupOperationsPanel() {
   }
   if (opsPauseBtn) {
     opsPauseBtn.addEventListener("click", () => {
-      // Toggle pause state logic would go here
+      queuePaused = !queuePaused;
+      opsPauseBtn.title = queuePaused ? "Resume queue" : "Pause queue";
+      opsPauseBtn.classList.toggle("active", queuePaused);
+      scheduleOpsRender();
+      if (!queuePaused) processOperationQueue();
     });
   }
   if (opsClearBtn) {
     opsClearBtn.addEventListener("click", () => {
-      // Clear appHistory logic would go here
+      operationHistory.length = 0;
+      scheduleOpsRender();
     });
   }
+}
+
+// Cancel a running or queued operation. Running operations are cancelled
+// cooperatively: the op's `cancel` hook (usually cancelOperation IPC) is
+// invoked and `cancelRequested` is set for loops that poll it. Queued
+// operations are simply removed from the queue.
+async function cancelQueuedOperation(op) {
+  if (!op) return;
+  if (op.status === "queued") {
+    const idx = operationQueue.indexOf(op);
+    if (idx >= 0) operationQueue.splice(idx, 1);
+    op.status = "cancelled";
+    op.finishedAt = Date.now();
+    operationHistory.unshift(op);
+    if (operationHistory.length > OPERATION_HISTORY_LIMIT) operationHistory.length = OPERATION_HISTORY_LIMIT;
+    scheduleOpsRender();
+    return;
+  }
+  if (op.status === "running" && !op.cancelRequested) {
+    op.cancelRequested = true;
+    scheduleOpsRender();
+    if (typeof op.cancel === "function") {
+      try { await op.cancel(op); } catch { }
+    }
+  }
+}
+
+function isModalOpen() {
+  return Boolean(document.querySelector(".fm-modal-overlay"));
+}
+
+function formatOpsDuration(op) {
+  if (!op.startedAt) return "";
+  const end = op.finishedAt || Date.now();
+  const secs = Math.max(0, Math.round((end - op.startedAt) / 1000));
+  return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
+function buildOpsItem(op, { showCancel }) {
+  const item = document.createElement("div");
+  item.className = `ops-item ops-item-${op.status}`;
+
+  const header = document.createElement("div");
+  header.className = "ops-item-header";
+
+  const title = document.createElement("div");
+  title.className = "ops-item-title";
+  title.textContent = op.label || "Operation";
+  title.title = op.label || "";
+  header.appendChild(title);
+
+  const meta = document.createElement("div");
+  meta.className = "ops-item-meta";
+  let metaText = op.status;
+  if (op.status === "running" && op.cancelRequested) metaText = "cancelling…";
+  else if (op.status === "running" && op.usesProgress) metaText = `${Math.round(op.progress || 0)}%`;
+  else if (op.status === "failed" && op.error) metaText = `failed: ${op.error}`;
+  else if (op.status === "completed") metaText = `done ${formatOpsDuration(op)}`.trim();
+  meta.textContent = metaText;
+  meta.title = metaText;
+  header.appendChild(meta);
+
+  if (showCancel) {
+    const actions = document.createElement("div");
+    actions.className = "ops-item-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "ops-item-btn";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.disabled = Boolean(op.cancelRequested);
+    cancelBtn.addEventListener("click", () => cancelQueuedOperation(op));
+    actions.appendChild(cancelBtn);
+    header.appendChild(actions);
+  }
+
+  item.appendChild(header);
+
+  if (op.status === "running" && op.usesProgress) {
+    const bar = document.createElement("div");
+    bar.className = "ops-progress";
+    const fill = document.createElement("div");
+    fill.className = "ops-progress-fill";
+    fill.style.width = `${Math.min(100, Math.max(0, op.progress || 0))}%`;
+    bar.appendChild(fill);
+    item.appendChild(bar);
+  }
+  return item;
+}
+
+function updateOpsPanel() {
+  const queueList = document.getElementById("ops-queue-list");
+  const historyList = document.getElementById("ops-history-list");
+  const hasActive = Boolean(activeOperation) || operationQueue.length > 0;
+
+  if (opsToggleBtn) {
+    opsToggleBtn.classList.toggle("active", hasActive);
+    const n = (activeOperation ? 1 : 0) + operationQueue.length;
+    opsToggleBtn.title = hasActive ? `Operations (${n} active)` : "Operations";
+  }
+
+  // Don't rebuild DOM while hidden — it's cheap, but runs on every progress tick.
+  if (!opsPanel || opsPanel.style.display !== "flex") return;
+
+  if (queueList) {
+    queueList.replaceChildren();
+    if (activeOperation) {
+      queueList.appendChild(buildOpsItem(activeOperation, { showCancel: true }));
+    }
+    for (const op of operationQueue) {
+      queueList.appendChild(buildOpsItem(op, { showCancel: true }));
+    }
+    if (!activeOperation && operationQueue.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "ops-item-meta";
+      empty.textContent = queuePaused ? "Queue paused" : "No active operations";
+      queueList.appendChild(empty);
+    } else if (queuePaused) {
+      const paused = document.createElement("div");
+      paused.className = "ops-item-meta";
+      paused.textContent = "Queue paused — new operations will wait";
+      queueList.prepend(paused);
+    }
+  }
+
+  if (historyList) {
+    historyList.replaceChildren();
+    if (operationHistory.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "ops-item-meta";
+      empty.textContent = "No history";
+      historyList.appendChild(empty);
+    }
+    for (const op of operationHistory) {
+      historyList.appendChild(buildOpsItem(op, { showCancel: false }));
+    }
+  }
+}
+
+var opsRenderScheduled = false;
+function scheduleOpsRender() {
+  if (opsRenderScheduled) return;
+  opsRenderScheduled = true;
+  requestAnimationFrame(() => {
+    opsRenderScheduled = false;
+    updateOpsPanel();
+  });
 }
 
 function scheduleIdle(callback) {
@@ -1526,6 +1676,7 @@ function escapeHtmlAttr(text) {
 function showDeleteChoiceModal(title, message) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
+    overlay.classList.add("fm-modal-overlay");
     overlay.setAttribute("data-role", "fm-delete-overlay");
     overlay.style.cssText = `
       position: fixed;
@@ -1592,6 +1743,7 @@ function initFileConflictHandler() {
 function showFileConflictModal(fileName) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
+    overlay.classList.add("fm-modal-overlay");
     overlay.style.cssText = `
       position: fixed;
       inset: 0;
@@ -1731,6 +1883,7 @@ async function showPropertiesModal(itemPath) {
     .join("");
 
   const overlay = document.createElement("div");
+  overlay.classList.add("fm-modal-overlay");
   overlay.style.cssText = "position:fixed; inset:0; background:var(--modal-backdrop); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; z-index:6000;";
   const dialog = document.createElement("div");
   dialog.style.cssText = "width:480px; max-width:90vw; max-height:80vh; overflow-y:auto; background:var(--bg-overlay); border:1px solid var(--border-color); border-radius:14px; padding:16px; color:var(--text-primary);";
@@ -1761,6 +1914,7 @@ async function showPropertiesModal(itemPath) {
 function showConfirmModal(title, message, confirmLabel = "Confirm") {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
+    overlay.classList.add("fm-modal-overlay");
     overlay.style.cssText = "position:fixed; inset:0; background:var(--modal-backdrop); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; z-index:6000;";
     const dialog = document.createElement("div");
     dialog.style.cssText = "width:400px; background:var(--bg-overlay); border:1px solid var(--border-color); border-radius:14px; padding:16px; color:var(--text-primary);";
@@ -1783,6 +1937,7 @@ function showConfirmModal(title, message, confirmLabel = "Confirm") {
 function showTextInputModal(title, message, defaultValue = "", confirmLabel = "OK", type = "text") {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
+    overlay.classList.add("fm-modal-overlay");
     overlay.style.cssText = "position:fixed; inset:0; background:var(--modal-backdrop); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; z-index:6000;";
     const dialog = document.createElement("div");
     dialog.style.cssText = "width:400px; background:var(--bg-overlay); border:1px solid var(--border-color); border-radius:14px; padding:16px; color:var(--text-primary);";
@@ -1839,10 +1994,13 @@ async function processOperationQueue() {
   try {
     const result = await op.run(op);
     op.status = result?.cancelled ? "cancelled" : "completed";
-    if (op.onSuccess) await op.onSuccess(result);
+    if (op.status === "completed" && op.onSuccess) await op.onSuccess(result);
   } catch (err) {
     op.status = err?.cancelled ? "cancelled" : "failed";
-    op.error = err.message;
+    op.error = err?.message;
+    if (op.onError) {
+      try { await op.onError(err); } catch { }
+    }
   } finally {
     op.finishedAt = Date.now();
     if (op.usesProgress) finishProgress();
@@ -1854,8 +2012,29 @@ async function processOperationQueue() {
   }
 }
 
-function scheduleOpsRender() {
-  if (typeof updateOpsPanel === "function") updateOpsPanel();
+async function performUndo() {
+  const entry = undoStack.pop();
+  if (typeof refreshUndoMenu === "function") refreshUndoMenu();
+  if (!entry) {
+    showNotification("Nothing to undo");
+    return;
+  }
+  enqueueOperation({
+    label: entry.label || "Undo",
+    usesProgress: Boolean(entry.usesProgress),
+    run: async () => {
+      await entry.undo();
+    },
+    onSuccess: async () => {
+      showNotification(entry.successMessage || "Undone");
+    },
+    onError: (error) => {
+      // A failed undo is not retried automatically: the filesystem may be
+      // in a partially reverted state, so re-pushing the entry could make
+      // things worse. The user gets an error and the entry is dropped.
+      showNotification(`Undo failed: ${error?.message || "Unknown error"}`, "error");
+    },
+  });
 }
 
 function pushUndo(entry) {

@@ -2108,6 +2108,21 @@ body.platform-win32 .window-controls {
 }
 
 
+.status-bar-icon-btn.active,
+.ops-icon-btn.active {
+    color: var(--accent-color);
+}
+
+.ops-item-cancelled .ops-item-title,
+.ops-item-failed .ops-item-title {
+    color: var(--text-muted);
+}
+
+.ops-item-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
 .ops-panel {
     position: fixed;
     right: 16px;

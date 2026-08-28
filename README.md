@@ -14,6 +14,14 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
+### v1.0.0-spumoni.4.0
+
+- Operations panel: cancel running/queued copy, move and delete; pause/resume queue; history
+- Undo implemented (context menu and Ctrl+Z); undo now tracks the real destination after conflict resolution and never deletes pre-existing files
+- Fixed: copy/move of a folder into itself via paste (unbounded recursion), rename silently overwriting existing files, shell injection in sudo delete
+- Fixed: shortcuts firing behind modals and on key auto-repeat, Ctrl+A selecting hidden files
+- Fixed: sidebar/preview pane resize, external folder drop onto sidebar, inline image preview
+
 ### v1.0.0-spumoni.3.8
 
 - File operation reliability: per-item error skip, symlink copy, move verification, disk space check

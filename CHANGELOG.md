@@ -2,6 +2,29 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [1.0.0-spumoni.4.0] - 2026-08-29
+
+### Added
+
+- **Operations panel** -- Queue and history are now rendered (previously a stub); running and queued operations show a Cancel button, running ones a progress bar. Pause/resume and clear-history buttons work. Cancel calls the operation's `cancelOperation` IPC so copy/move/delete stop cooperatively; queued operations are removed before they start
+- **Ctrl+Z** -- Bound to Undo
+
+### Fixed
+
+- **Copy/move into itself** -- `paste()` had no self/descendant guard (drag-drop did), so cutting `/a` and pasting into `/a/b` fell back to recursive copy and filled the disk. Guard is now shared via `buildTransferItems()` and also enforced in `batch-file-operation` on the main side
+- **Undo of copy/move ignored conflict resolution** -- Undo used the intended destination paths, so after "Skip" or "Keep Both" it deleted the pre-existing file. `batch-file-operation` now returns `completedItems` (actual destinations, `replaced` flag) and only those are undoable; replaced items are never undone
+- **`performUndo` not defined** -- Undo context-menu item threw ReferenceError; implemented in core.js (runs through the operation queue) and bound to Ctrl+Z
+- **`onError` never invoked** -- `processOperationQueue` swallowed failures without calling the operation's `onError`, so failed copies/moves showed no notification
+- **Shell injection in sudo delete** -- `delete-item-sudo` interpolated the path into a shell string; now uses `spawn("sudo", [...])` with no shell
+- **Rename overwrote existing files** -- `rename-item` now validates the name (no separators, `..`, empty) and refuses to replace an existing entry (case-only renames on case-insensitive filesystems still allowed)
+- **Keyboard shortcuts while a modal is open / on auto-repeat** -- Delete, Ctrl+V, Enter etc. no longer fire while a confirmation or conflict dialog is open, and no longer repeat when the key is held (holding Delete stacked one dialog per repeat; holding Ctrl+V enqueued the same paste repeatedly). Cursor keys still repeat
+- **Ctrl+A selected hidden files** -- Select All now respects the hidden-file toggle, the search filter and picker mode, so a following Delete cannot touch items that were not visible
+- **Progress bar disappearing mid-operation** -- `finishProgress()`'s 700ms hide timer is cancelled when the next operation starts; it previously hid the bar during a queued follow-up operation
+- **onSuccess after cancel** -- An operation whose result was `cancelled` no longer runs its `onSuccess` handler (which would push a bogus undo entry and show a success notification)
+- **`clamp` not defined** -- Sidebar / preview pane resize handles threw ReferenceError and never resized
+- **`window.api.getItemInfo`** -- Dropping an external folder onto the sidebar failed silently; fixed to `window.fileManager`
+- **`getImageDataUri` missing from preload** -- Preview pane always fell back to `file://`; added `get-image-data-uri` IPC with a 20MB limit
+
 ## [1.0.0-spumoni.3.8] - 2026-04-06
 
 ### Added

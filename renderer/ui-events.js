@@ -456,6 +456,10 @@ function setupFileListHandlers() {
 
 
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function clampMin(value, min) {
   return Math.max(min, value);
 }
@@ -851,7 +855,7 @@ function setupQuickAccess() {
         pinCount++;
       } else if (!item) {
         try {
-          const info = await window.api.getItemInfo(itemPath);
+          const info = await window.fileManager.getItemInfo(itemPath);
           if (info.success && info.info.isDirectory) {
             const label =
               itemPath.split(/[/\\]/).filter(Boolean).pop() || itemPath;

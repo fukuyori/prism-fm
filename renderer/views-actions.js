@@ -42,13 +42,16 @@ async function paste() {
   const opType = clipboardOperation;
   const itemsToPaste = [...clipboardItems];
   const sourcePaneId = clipboardSourcePaneId;
-  const batchItems = [];
+  const targetDir = currentPath;
+  const { items: batchItems, rejected } = buildTransferItems(itemsToPaste, targetDir);
 
-  for (const sourcePath of itemsToPaste) {
-    const parsed = localParsePath(sourcePath);
-    const destPath = localJoinPaths(currentPath, parsed.base);
-    batchItems.push({ source: sourcePath, dest: destPath });
+  if (rejected.length > 0) {
+    showNotification(
+      `Cannot ${opType === "copy" ? "copy" : "move"} a folder into itself (${rejected.length} item(s) skipped)`,
+      "error",
+    );
   }
+  if (batchItems.length === 0) return;
 
   const label =
     opType === "copy"
@@ -77,30 +80,7 @@ async function paste() {
       }
     },
     onSuccess: async (result) => {
-      if (opType === "copy") {
-        const copiedPaths = batchItems.map((item) => item.dest);
-        pushUndo({
-          label: formatUndoLabel("Copy", copiedPaths.length),
-          successMessage: "Undid copy",
-          undo: async () => {
-            await deletePathsPermanently(copiedPaths);
-            refresh();
-          },
-        });
-      } else if (opType === "cut") {
-        const movedItems = batchItems.map((item) => ({
-          source: item.dest,
-          dest: item.source,
-        }));
-        pushUndo({
-          label: formatUndoLabel("Move", movedItems.length),
-          successMessage: "Undid move",
-          undo: async () => {
-            await runBatchOperation(movedItems, "move");
-            refresh();
-          },
-        });
-      }
+      pushTransferUndo(opType === "copy", result);
       const verb = opType === "copy" ? "Copied" : "Moved";
       const errCount = result?.errors?.length || 0;
       if (errCount > 0) {
@@ -134,6 +114,79 @@ async function paste() {
   );
 }
 
+// Build {source, dest} pairs for a copy/move into targetDir, dropping
+// sources that are already in targetDir and — critically — sources that
+// contain targetDir (copying a folder into itself recurses until the path
+// length limit). Returns rejected sources separately so the caller can
+// tell the user. Used by both paste() and handleFileDrop().
+function buildTransferItems(sourcePaths, targetDir) {
+  const items = [];
+  const rejected = [];
+  const normTargetDir = normalizePathForCompare(targetDir);
+  const isWindows = window.fileManager.platform === "win32";
+  const sep = isWindows ? "\\" : "/";
+
+  for (const sourcePath of sourcePaths) {
+    const parsed = localParsePath(sourcePath);
+    const destPath = localJoinPaths(targetDir, parsed.base);
+    const normSourcePath = normalizePathForCompare(sourcePath);
+    const normDestPath = normalizePathForCompare(destPath);
+
+    if (normSourcePath === normDestPath) continue;
+
+    // Source already lives directly in targetDir — nothing to do.
+    const cleanSource = sourcePath.replace(/[/\\]+$/, "");
+    const lastSep = cleanSource.lastIndexOf(sep);
+    if (lastSep >= 0) {
+      const parent = lastSep === 0 ? "/" : cleanSource.substring(0, lastSep);
+      if (normalizePathForCompare(parent) === normTargetDir) continue;
+    }
+
+    // targetDir is the source itself or one of its descendants.
+    if (isPathWithin(sourcePath, targetDir)) {
+      rejected.push(sourcePath);
+      continue;
+    }
+
+    items.push({ source: sourcePath, dest: destPath });
+  }
+  return { items, rejected };
+}
+
+// Register an undo entry from a batch-file-operation result. Only items
+// the main process actually completed are undoable, at the destination it
+// actually used (Keep Both renames). Items that replaced an existing file
+// are excluded: the original is gone, so "undo" would just delete the
+// user's data.
+function pushTransferUndo(isCopy, result) {
+  const done = Array.isArray(result?.completedItems) ? result.completedItems : [];
+  const undoable = done.filter((it) => it && it.dest && it.source && !it.replaced);
+  if (undoable.length === 0) return;
+
+  if (isCopy) {
+    const copiedPaths = undoable.map((it) => it.dest);
+    pushUndo({
+      label: formatUndoLabel("Copy", copiedPaths.length),
+      successMessage: "Undid copy",
+      undo: async () => {
+        await deletePathsPermanently(copiedPaths);
+        refresh();
+      },
+    });
+  } else {
+    const movedItems = undoable.map((it) => ({ source: it.dest, dest: it.source }));
+    pushUndo({
+      label: formatUndoLabel("Move", movedItems.length),
+      successMessage: "Undid move",
+      usesProgress: true,
+      undo: async () => {
+        await runBatchOperation(movedItems, "move");
+        refresh();
+      },
+    });
+  }
+}
+
 async function handleFileDrop(
   sourcePaths,
   targetDir,
@@ -143,41 +196,13 @@ async function handleFileDrop(
 ) {
   if (sourcePaths.length === 0) return;
 
-  const normTargetDir = normalizePathForCompare(targetDir);
-  const isWindows = window.fileManager.platform === "win32";
-  const sep = isWindows ? "\\" : "/";
-
-  const batchItems = [];
-
   try {
-    for (const sourcePath of sourcePaths) {
-      const parsed = localParsePath(sourcePath);
-      const destPath = localJoinPaths(targetDir, parsed.base);
-      const normSourcePath = normalizePathForCompare(sourcePath);
-      const normDestPath = normalizePathForCompare(destPath);
-
-      if (normSourcePath === normDestPath) {
-        continue;
-      }
-
-      const cleanSource = sourcePath.replace(/[/\\]+$/, "");
-      const lastSep = cleanSource.lastIndexOf(sep);
-      if (lastSep >= 0) {
-        const parent = lastSep === 0 ? "/" : cleanSource.substring(0, lastSep);
-        if (normalizePathForCompare(parent) === normTargetDir) {
-          continue;
-        }
-      }
-
-      if (normDestPath.startsWith(normSourcePath + "/")) {
-        continue;
-      }
-
-      if (normalizePathForCompare(targetDir) === normSourcePath) {
-        continue;
-      }
-
-      batchItems.push({ source: sourcePath, dest: destPath });
+    const { items: batchItems, rejected } = buildTransferItems(sourcePaths, targetDir);
+    if (rejected.length > 0) {
+      showNotification(
+        `Cannot ${isCopy ? "copy" : "move"} a folder into itself (${rejected.length} item(s) skipped)`,
+        "error",
+      );
     }
 
     if (batchItems.length > 0) {
@@ -207,30 +232,7 @@ async function handleFileDrop(
           }
         },
         onSuccess: async (result) => {
-          if (isCopy) {
-            const copiedPaths = batchItems.map((item) => item.dest);
-            pushUndo({
-              label: formatUndoLabel("Copy", copiedPaths.length),
-              successMessage: "Undid copy",
-              undo: async () => {
-                await deletePathsPermanently(copiedPaths);
-                refresh();
-              },
-            });
-          } else {
-            const movedItems = batchItems.map((item) => ({
-              source: item.dest,
-              dest: item.source,
-            }));
-            pushUndo({
-              label: formatUndoLabel("Move", movedItems.length),
-              successMessage: "Undid move",
-              undo: async () => {
-                await runBatchOperation(movedItems, "move");
-                refresh();
-              },
-            });
-          }
+          pushTransferUndo(isCopy, result);
           const verb = isCopy ? "Copied" : "Moved";
           const errCount = result?.errors?.length || 0;
           if (errCount > 0) {
@@ -754,6 +756,11 @@ async function emptyTrash() {
   }
 }
 
+const KEYBOARD_REPEAT_ALLOWED = new Set([
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "PageUp", "PageDown", "Home", "End", "Tab",
+]);
+
 function handleKeyboard(e) {
   if (themeModal && themeModal.classList.contains("visible")) {
     if (e.key === "Escape") {
@@ -765,13 +772,30 @@ function handleKeyboard(e) {
 
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
 
+  // A modal (delete confirmation, conflict dialog, properties, …) owns the
+  // keyboard while it is open; Delete/Ctrl+V/Enter must not reach the file
+  // list underneath and stack a second dialog or run the action twice.
+  if (typeof isModalOpen === "function" && isModalOpen()) return;
+
+  // Auto-repeat is fine for cursor movement but not for actions: holding
+  // Delete would open one confirmation per repeat, Ctrl+V would enqueue
+  // the same paste many times.
+  if (e.repeat && !KEYBOARD_REPEAT_ALLOWED.has(e.key)) return;
+
   if (e.ctrlKey || e.metaKey) {
     switch (e.key.toLowerCase()) {
-      case "a":
+      case "a": {
         e.preventDefault();
-        currentItems.forEach((item) => selectedItems.add(item.path));
+        // Only what the user can see: respect hidden-file toggle, search
+        // filter and picker mode, so Ctrl+A → Delete can't touch .git etc.
+        const visible =
+          typeof filterItems === "function"
+            ? filterItems(currentItems, typeof getSearchTerm === "function" ? getSearchTerm() : "")
+            : currentItems;
+        visible.forEach((item) => selectedItems.add(item.path));
         updateSelectionUI();
         break;
+      }
       case "c":
         e.preventDefault();
         copySelected();
@@ -787,6 +811,10 @@ function handleKeyboard(e) {
       case "r":
         e.preventDefault();
         refresh();
+        break;
+      case "z":
+        e.preventDefault();
+        performUndo();
         break;
       case "t":
         e.preventDefault();

@@ -1070,28 +1070,38 @@ ipcMain.handle("delete-item", async (event, itemPath) => {
 });
 
 ipcMain.handle("delete-item-sudo", async (event, itemPath, password) => {
-  const { exec } = require("child_process");
+  const { spawn } = require("child_process");
 
-  const safePath = itemPath.replace(/"/g, '\\"');
+  if (typeof itemPath !== "string" || !path.isAbsolute(itemPath)) {
+    return { success: false, error: "Invalid path" };
+  }
 
   return new Promise((resolve) => {
-    const child = exec(
-      `sudo -S -k -p '' rm -rf "${safePath}"`,
-      (error, stdout, stderr) => {
-        if (error) {
-          logCommandFailure(
-            `sudo -S -k -p '' rm -rf "${safePath}"`,
-            { message: error.message, stderr, stdout },
-          );
-        }
-        resolve(
-          error
-            ? { success: false, error: stderr || error.message }
-            : { success: true },
-        );
-      },
-    );
-
+    // No shell: the path is passed as a single argv entry, so shell
+    // metacharacters in file names cannot be interpreted.
+    const args = ["-S", "-k", "-p", "", "rm", "-rf", "--", itemPath];
+    let child;
+    try {
+      child = spawn("sudo", args, { stdio: ["pipe", "pipe", "pipe"] });
+    } catch (spawnErr) {
+      resolve({ success: false, error: spawnErr.message });
+      return;
+    }
+    let stderr = "";
+    child.stderr.on("data", (d) => { stderr += d.toString(); });
+    child.on("error", (err) => {
+      logCommandFailure(`sudo rm -rf -- ${itemPath}`, { message: err.message, stderr });
+      resolve({ success: false, error: stderr || err.message });
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ success: true });
+      } else {
+        logCommandFailure(`sudo rm -rf -- ${itemPath}`, { message: `exit ${code}`, stderr });
+        resolve({ success: false, error: stderr.trim() || `sudo exited with code ${code}` });
+      }
+    });
+    child.stdin.on("error", () => { });
     child.stdin.write(password + "\n");
     child.stdin.end();
   });
@@ -1263,14 +1273,53 @@ ipcMain.handle("restore-trash-items", async (event, originalPaths) => {
   return { success: failed.length === 0, restored, failed };
 });
 
+function validateEntryName(name) {
+  if (typeof name !== "string" || name.length === 0) return "Name cannot be empty";
+  if (name === "." || name === "..") return "Invalid name";
+  if (name !== path.basename(name) || /[\\/]/.test(name)) {
+    return "Name cannot contain path separators";
+  }
+  if (name.includes("\0")) return "Invalid name";
+  return null;
+}
+
 ipcMain.handle("rename-item", async (event, oldPath, newName) => {
   try {
+    const nameError = validateEntryName(newName);
+    if (nameError) return { success: false, error: nameError };
+
     const dirName = path.dirname(oldPath);
     const newPath = path.join(dirName, newName);
+    if (newPath === oldPath) return { success: true, newPath };
+
+    // Refuse to silently overwrite an existing entry. fs.rename replaces
+    // files without warning on every platform, so check first (lstat so a
+    // dangling symlink still counts as existing). A case-only rename on a
+    // case-insensitive filesystem resolves to the same inode — allow that.
+    let existing = null;
+    try { existing = await fs.lstat(newPath); } catch { }
+    if (existing) {
+      let sameEntry = false;
+      try {
+        const oldStats = await fs.lstat(oldPath);
+        sameEntry =
+          oldStats.ino === existing.ino &&
+          oldStats.dev === existing.dev &&
+          oldStats.ino !== 0;
+      } catch { }
+      if (!sameEntry) {
+        return {
+          success: false,
+          code: "EEXIST",
+          error: `An item named "${newName}" already exists`,
+        };
+      }
+    }
+
     await fs.rename(oldPath, newPath);
     return { success: true, newPath };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: error.message, code: error.code };
   }
 });
 
@@ -1666,12 +1715,50 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
   };
 
   const errors = [];
+  const completedList = []; // { source, dest, replaced }
   let completedItems = 0;
   let skippedItems = 0;
+
+  // True when dest is the same path as src or lies inside it. Copying or
+  // moving a directory into itself would otherwise recurse until the path
+  // length limit is hit.
+  const isSelfOrDescendant = (src, dest) => {
+    const rel = path.relative(path.resolve(src), path.resolve(dest));
+    if (rel === "") return true;
+    if (rel.startsWith("..")) return false;
+    return !path.isAbsolute(rel);
+  };
 
   try {
     for (const item of items) {
       checkCancelled();
+
+      if (
+        typeof item?.source !== "string" ||
+        typeof item?.dest !== "string" ||
+        !item.source ||
+        !item.dest
+      ) {
+        errors.push({ path: String(item?.source ?? ""), error: "Invalid item" });
+        continue;
+      }
+
+      if (isSelfOrDescendant(item.source, item.dest)) {
+        errors.push({
+          path: item.source,
+          error: `Cannot ${operation} "${path.basename(item.source)}" into itself`,
+        });
+        const size = itemSizes.get(item.source) || 0;
+        processedBytes += size;
+        reportProgress();
+        continue;
+      }
+
+      let destExisted = false;
+      try {
+        await fs.lstat(item.dest);
+        destExisted = true;
+      } catch { }
 
       const finalDest = await resolveConflict(item);
       if (finalDest === null) {
@@ -1681,6 +1768,9 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
         reportProgress();
         continue;
       }
+
+      // finalDest === item.dest while it existed means "replace".
+      const replaced = destExisted && finalDest === item.dest;
 
       try {
         if (operation === "copy") {
@@ -1714,6 +1804,7 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
           }
         }
         completedItems++;
+        completedList.push({ source: item.source, dest: finalDest, replaced });
       } catch (itemErr) {
         if (itemErr?.code === "CANCELLED") throw itemErr;
         errors.push({ path: item.source, error: itemErr.message });
@@ -1734,6 +1825,7 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
     return {
       success: true,
       completed: completedItems,
+      completedItems: completedList,
       skipped: skippedItems,
       errors,
     };
@@ -2508,6 +2600,28 @@ ipcMain.handle("read-file-preview", async (event, filePath) => {
 
     const content = await fs.readFile(filePath, "utf8");
     return { success: true, content };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+const IMAGE_DATA_URI_MAX_BYTES = 20 * 1024 * 1024; // 20MB
+const IMAGE_MIME_BY_EXT = {
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+  ".svg": "image/svg+xml", ".ico": "image/x-icon", ".avif": "image/avif",
+};
+
+ipcMain.handle("get-image-data-uri", async (event, filePath) => {
+  try {
+    const stats = await fs.stat(filePath);
+    if (!stats.isFile()) return { success: false, error: "Not a file" };
+    if (stats.size > IMAGE_DATA_URI_MAX_BYTES) {
+      return { success: false, error: "Image too large for inline preview", tooLarge: true };
+    }
+    const mime = IMAGE_MIME_BY_EXT[path.extname(filePath).toLowerCase()] || "application/octet-stream";
+    const buf = await fs.readFile(filePath);
+    return { success: true, mime, data: buf.toString("base64") };
   } catch (error) {
     return { success: false, error: error.message };
   }
