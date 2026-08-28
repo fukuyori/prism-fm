@@ -2,7 +2,7 @@
 
 All notable changes to Prism FM are documented in this file.
 
-## [Unreleased]
+## [1.0.0-spumoni.4.1] - 2026-08-29
 
 ### Fixed
 

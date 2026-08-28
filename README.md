@@ -14,6 +14,17 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
+### v1.0.0-spumoni.4.1
+
+- Split view: Back/Forward rendered the previous directory; stale async responses no longer overwrite panes, tabs, preview or drive list
+- Conflict "Replace" now fully replaces (no directory merge, symlink at destination not followed); cross-device move fallback only on EXDEV; same-device moves skip the disk space check
+- Selection stays in sync after refresh; post-operation refresh targets the affected panes; Extract Here uses the folder it was queued from
+- Directory copy continues past unreadable files; cancelled stream copy removes the partial file; conflict dialog can no longer hang an operation
+- Archive fixes: no extraction into existing folders, no appending to existing archives, large archives no longer killed by output buffer limit
+- macOS: Option is the copy modifier on drag; Cmd+Q honours the "operation in progress" confirmation
+- Linux: context menu no longer built twice per right-click
+- Cut clipboard survives a cancelled paste; Escape closes menus; confirm dialogs work with Enter/Escape
+
 ### v1.0.0-spumoni.4.0
 
 - Operations panel: cancel running/queued copy, move and delete; pause/resume queue; history
