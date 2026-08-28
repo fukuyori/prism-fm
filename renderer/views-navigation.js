@@ -183,13 +183,16 @@ function finishNavigation() {
     }
   }
 
+  // Clear BEFORE rendering: renderFiles() paints rows with the selection
+  // they had at render time, so clearing afterwards left rows highlighted
+  // that no longer counted as selected.
+  selectedItems.clear();
   updateUI();
   if (splitViewEnabled && !pickerMode) {
     renderAllPanes();
   } else {
     renderFiles();
   }
-  selectedItems.clear();
   updateStatusBar();
 
   if (panes[activePaneId]) {

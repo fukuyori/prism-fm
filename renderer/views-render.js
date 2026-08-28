@@ -406,6 +406,14 @@ function setupFolderDropHandlers(element, item) {
       folderHoverTimer = null;
     }
 
+    if (
+      isDragging &&
+      draggedItems.some((p) => p === item.path || isPathWithin(p, item.path))
+    ) {
+      cleanupDragState();
+      return;
+    }
+
     const paneId = element.closest(".file-pane")?.dataset.pane;
     if (paneId && paneId !== activePaneId) {
       setActivePane(paneId, { skipRender: true });
@@ -813,22 +821,26 @@ function updateSelectionUI() {
   const selectedSet = pane?.selectedItems || selectedItems;
 
   if (listEl) {
-    // Only update elements that changed
-    for (const path of selectedSet) {
-      if (!previousSelectedPaths.has(path)) {
-        const el = listEl.querySelector(
-          `.file-item[data-path="${CSS.escape(path)}"]`,
-        );
-        if (el) el.classList.add("selected");
+    // Diff against what is actually highlighted in this pane's DOM. A
+    // single remembered set was shared by both split-view panes and went
+    // stale whenever the other pane re-rendered, leaving rows highlighted
+    // that were no longer selected.
+    const highlighted = listEl.querySelectorAll(".file-item.selected");
+    const seen = new Set();
+    for (const el of highlighted) {
+      const p = el.dataset.path;
+      if (selectedSet.has(p)) {
+        seen.add(p);
+      } else {
+        el.classList.remove("selected");
       }
     }
-    for (const path of previousSelectedPaths) {
-      if (!selectedSet.has(path)) {
-        const el = listEl.querySelector(
-          `.file-item[data-path="${CSS.escape(path)}"]`,
-        );
-        if (el) el.classList.remove("selected");
-      }
+    for (const path of selectedSet) {
+      if (seen.has(path)) continue;
+      const el = listEl.querySelector(
+        `.file-item[data-path="${CSS.escape(path)}"]`,
+      );
+      if (el) el.classList.add("selected");
     }
     previousSelectedPaths = new Set(selectedSet);
   }
@@ -1039,16 +1051,63 @@ async function refreshPane(paneId) {
       pane.path = result.path;
       pane.items = result.contents;
       pane.isArchive = Boolean(result.isArchive);
+
+      // Drop selections that no longer exist (moved/deleted items) so a
+      // later Delete/Rename can't target a path that is gone.
+      const alive = new Set(result.contents.map((it) => it.path));
+      if (pane.selectedItems) {
+        for (const p of [...pane.selectedItems]) {
+          if (!alive.has(p)) pane.selectedItems.delete(p);
+        }
+      }
+
+      if (paneId === activePaneId) {
+        // currentItems previously kept pointing at the old array.
+        currentPath = pane.path;
+        currentItems = pane.items;
+        if (pane.selectedItems) selectedItems = pane.selectedItems;
+      }
       renderPane(pane);
       if (paneId === activePaneId) {
         const appContainer = document.querySelector(".app-container");
         if (appContainer) {
           appContainer.classList.toggle("archive-mode", pane.isArchive);
         }
+        updateSelectionUI();
+        scheduleVisibleFolderSizes();
       }
     }
   } catch (error) {
     console.error("Pane refresh failed:", error);
+  }
+}
+
+// Refresh every pane that shows one of the given directories. Used after
+// copy/move/extract so the pane the operation targeted is updated even if
+// the user has since clicked into the other pane, and so two panes showing
+// the same directory don't disagree.
+async function refreshPanesShowing(dirPaths) {
+  // localParsePath("/a").dir is "" for a root-level entry; treat as "/".
+  const wanted = new Set(
+    (dirPaths || [])
+      .map((p) => (p === "" ? "/" : p))
+      .filter(Boolean)
+      .map((p) => normalizePathForCompare(p)),
+  );
+  if (wanted.size === 0) return;
+  const ids = ["left"];
+  if (splitViewEnabled && !pickerMode) ids.push("right");
+  for (const id of ids) {
+    const pane = panes[id];
+    if (!pane?.path) continue;
+    if (wanted.has(normalizePathForCompare(pane.path))) {
+      if (id === activePaneId && pane.items) {
+        for (const item of pane.items) {
+          if (item.isDirectory) folderSizeCache.delete(item.path);
+        }
+      }
+      await refreshPane(id);
+    }
   }
 }
 

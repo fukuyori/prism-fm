@@ -322,24 +322,15 @@ function setupContextMenuHandlers() {
     showContextMenu(e.clientX, e.clientY);
   };
 
-  let contextHandled = false;
-  document.addEventListener("mouseup", (e) => {
-    if (e.button !== 2) return;
-    const listEl = e.target.closest(".file-list");
-    if (!listEl) return;
-    contextHandled = true;
-    const paneId = listEl.dataset.pane;
-    openListContextMenu(e, listEl, paneId);
-  });
-
+  // Only the `contextmenu` event. A right-button `mouseup` listener used to
+  // open the menu too, with a flag to dedupe — but GTK fires `contextmenu`
+  // on mousedown (before mouseup) so the flag was always one step out of
+  // phase and every other right-click built the menu twice. `contextmenu`
+  // fires on every platform and also covers Shift+F10 / the Menu key.
   document.addEventListener("contextmenu", (e) => {
     const listEl = e.target.closest(".file-list");
     if (!listEl) return;
     e.preventDefault();
-    if (contextHandled) {
-      contextHandled = false;
-      return;
-    }
     const paneId = listEl.dataset.pane;
     openListContextMenu(e, listEl, paneId);
   });
@@ -360,6 +351,21 @@ function setupFileListHandlers() {
     });
 
     listEl.addEventListener("dragover", (e) => {
+      // Refuse the drop when the row under the cursor is one of the dragged
+      // items (or inside one). Without this the folder row's own dragover
+      // declines but this bubbling handler accepts, and the remaining
+      // selection gets moved into the folder that was dropped on itself.
+      if (isDragging && draggedItems.length > 0) {
+        const rowPath = e.target.closest?.(".file-item")?.dataset.path;
+        if (
+          rowPath &&
+          draggedItems.some((p) => rowPath === p || isPathWithin(p, rowPath))
+        ) {
+          e.dataTransfer.dropEffect = "none";
+          listEl.classList.remove("drop-target");
+          return;
+        }
+      }
       e.preventDefault();
       e.dataTransfer.dropEffect = e.ctrlKey ? "copy" : "move";
 

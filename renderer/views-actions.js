@@ -91,10 +91,11 @@ async function paste() {
       } else {
         showNotification(`${verb} ${itemsToPaste.length} item(s)`);
       }
-      refresh();
-      if (opType === "cut" && sourcePaneId && sourcePaneId !== activePaneId) {
-        await refreshPane(sourcePaneId);
+      const dirs = [targetDir];
+      if (opType === "cut") {
+        for (const it of batchItems) dirs.push(localParsePath(it.source).dir);
       }
+      await refreshPanesShowing(dirs);
     },
     onError: (error) => {
       if (!error?.cancelled) {
@@ -243,10 +244,11 @@ async function handleFileDrop(
           } else {
             showNotification(`${verb} ${batchItems.length} item(s)`);
           }
-          refresh();
-          if (!isCopy && sourcePaneId && sourcePaneId !== targetPaneId) {
-            await refreshPane(sourcePaneId);
+          const dirs = [targetDir];
+          if (!isCopy) {
+            for (const it of batchItems) dirs.push(localParsePath(it.source).dir);
           }
+          await refreshPanesShowing(dirs);
         },
         onError: (error) => {
           if (!error?.cancelled) {
@@ -461,6 +463,10 @@ async function extractSelected() {
   });
   if (archives.length === 0) return;
 
+  // Pin the destination now: `run` executes later from the queue, and by
+  // then the user may have navigated elsewhere or switched panes.
+  const destDir = currentPath;
+
   enqueueOperation({
     label: formatOperationLabel("Extract", archives.length),
     usesProgress: true,
@@ -474,7 +480,7 @@ async function extractSelected() {
           error.cancelled = true;
           throw error;
         }
-        const result = await window.fileManager.extractArchive(p, currentPath);
+        const result = await window.fileManager.extractArchive(p, destDir);
         if (result.success) {
           if (result.outputDir) extractedDirs.push(result.outputDir);
         } else {
@@ -507,7 +513,7 @@ async function extractSelected() {
       } else {
         showNotification(`Extracted ${archives.length} item(s)`);
       }
-      refresh();
+      await refreshPanesShowing([destDir]);
     },
     onError: (error) => {
       if (!error?.cancelled) {

@@ -12,6 +12,11 @@ All notable changes to Prism FM are documented in this file.
 - **"Replace" merged directories** -- conflict resolution "Replace" now removes the existing destination before copying/moving, so directory replacement is complete (no stale files left), moving onto a non-empty directory no longer fails with ENOTEMPTY, and a symlink at the destination is replaced rather than having its target overwritten
 - **Move fallback on non-EXDEV errors** -- copy-then-delete emulation is only used when `rename` fails with `EXDEV`; a locked or permission-denied rename now reports the original error instead of producing a duplicate
 - **Disk space check on same-device moves** -- only bytes from sources on a different device than the destination are counted, so moving within a nearly-full volume is no longer refused
+- **Selection highlight left behind after refresh** -- `finishNavigation` cleared the selection after rendering, so rows stayed highlighted while Delete/Rename did nothing; cleared before render now. `updateSelectionUI` diffs against the pane's own DOM instead of one set shared by both split-view panes, and `refreshPane` prunes selections whose files no longer exist and keeps `currentItems` in sync for the active pane
+- **Post-operation refresh hit the wrong pane** -- copy/move/extract completion now refreshes every pane showing the target (and, for moves, source) directory via `refreshPanesShowing()`, instead of whichever pane happened to be active when the operation finished
+- **Extract Here used the directory at run time** -- destination is captured when the operation is queued, so navigating away while it waits no longer extracts into the new folder
+- **Context menu built twice on Linux** -- removed the right-button `mouseup` opener; GTK fires `contextmenu` on mousedown so the dedupe flag was always one click out of phase
+- **Dropping a multi-selection onto one of its own folders** -- moved the rest of the selection into that folder; the drop is now refused (list-level `dragover` reports `dropEffect: none` for dragged rows and their descendants)
 - **Operations panel stub shadowed the real implementation** -- leftover `updateOpsPanel`/`scheduleOpsRender` stubs after `scheduleIdle()` won by declaration order; removed along with dead duplicate progress/escape helpers in core.js
 
 ## [1.0.0-spumoni.4.0] - 2026-08-29
