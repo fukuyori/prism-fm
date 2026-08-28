@@ -1024,7 +1024,10 @@ ipcMain.handle("batch-delete", async (event, itemPaths, operationId) => {
     }
 
     return {
+      // Partial success stays `success: true` (the renderer reports the
+      // failure count from `errors`); `partial` makes it explicit.
       success: errors.length === 0 || deletedFiles > 0,
+      partial: errors.length > 0 && deletedFiles > 0,
       deleted: deletedFiles,
       errors,
     };
@@ -1325,6 +1328,8 @@ ipcMain.handle("rename-item", async (event, oldPath, newName) => {
 
 ipcMain.handle("create-folder", async (event, parentPath, folderName) => {
   try {
+    const nameError = validateEntryName(folderName);
+    if (nameError) return { success: false, error: nameError };
     const basePath = path.resolve(parentPath);
     const desiredPath = path.join(basePath, folderName);
 
@@ -1361,6 +1366,8 @@ ipcMain.handle("create-folder", async (event, parentPath, folderName) => {
 
 ipcMain.handle("create-file", async (event, parentPath, fileName) => {
   try {
+    const nameError = validateEntryName(fileName);
+    if (nameError) return { success: false, error: nameError };
     const basePath = path.resolve(parentPath);
     const desiredPath = path.join(basePath, fileName);
 
@@ -1475,23 +1482,53 @@ ipcMain.on("start-drag", (event, filePaths) => {
 ipcMain.handle("cancel-operation", async (event, operationId) => {
   if (!operationId) return { success: false, error: "Missing operation id" };
   cancelOperations.add(String(operationId));
+  cancelPendingConflicts(operationId);
   return { success: true };
 });
 
+// resolveId -> { resolve, operationId }
 const conflictResolvers = new Map();
 
 ipcMain.on("resolve-file-conflict", (event, resolution) => {
-  const resolver = conflictResolvers.get(resolution.operationId);
-  if (resolver) {
-    conflictResolvers.delete(resolution.operationId);
-    resolver(resolution);
+  if (!resolution || typeof resolution !== "object") return;
+  // The renderer sends the resolveId under the key `operationId`.
+  const key = resolution.resolveId || resolution.operationId;
+  const entry = conflictResolvers.get(key);
+  if (entry) {
+    conflictResolvers.delete(key);
+    entry.resolve(resolution);
   }
 });
+
+// Answer every pending conflict dialog of an operation with "cancel".
+// Used when the operation is cancelled or the window goes away, so the
+// batch handler never waits forever (which would also keep
+// activeOperationCount > 0 and the quit confirmation permanently on).
+function cancelPendingConflicts(operationId) {
+  for (const [key, entry] of conflictResolvers) {
+    if (operationId === undefined || String(entry.operationId) === String(operationId)) {
+      conflictResolvers.delete(key);
+      entry.resolve({ action: "cancel" });
+    }
+  }
+}
 
 function askConflictResolution(sender, fileName, destPath, operationId) {
   return new Promise((resolve) => {
     const resolveId = `conflict-${Date.now()}-${Math.random()}`;
-    conflictResolvers.set(resolveId, resolve);
+    conflictResolvers.set(resolveId, { resolve, operationId });
+    if (sender.isDestroyed()) {
+      conflictResolvers.delete(resolveId);
+      resolve({ action: "cancel" });
+      return;
+    }
+    sender.once("destroyed", () => {
+      const entry = conflictResolvers.get(resolveId);
+      if (entry) {
+        conflictResolvers.delete(resolveId);
+        entry.resolve({ action: "cancel" });
+      }
+    });
     sender.send("file-conflict", {
       resolveId,
       fileName,
@@ -1605,19 +1642,38 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
     return new Promise((resolve, reject) => {
       const rs = fsSync.createReadStream(src);
       const ws = fsSync.createWriteStream(dest);
-      let copied = 0;
+      let settled = false;
+      // On cancel or error the destination is a truncated file; remove it
+      // so the user isn't left with a half-copied file that looks complete.
+      const fail = (err) => {
+        if (settled) return;
+        settled = true;
+        rs.destroy();
+        ws.destroy();
+        fs.unlink(dest).catch(() => { }).finally(() => reject(err));
+      };
       rs.on("data", (chunk) => {
-        if (shouldCancel()) { rs.destroy(); ws.destroy(); reject(Object.assign(new Error("Operation cancelled"), { code: "CANCELLED" })); return; }
-        copied += chunk.length;
+        if (shouldCancel()) {
+          fail(Object.assign(new Error("Operation cancelled"), { code: "CANCELLED" }));
+          return;
+        }
         processedBytes += chunk.length;
         reportProgress();
       });
-      rs.on("error", (err) => { ws.destroy(); reject(err); });
-      ws.on("error", (err) => { rs.destroy(); reject(err); });
-      ws.on("finish", resolve);
+      rs.on("error", fail);
+      ws.on("error", fail);
+      // "close" (not "finish"): the fd is closed, so chmod/utimes afterwards
+      // work on Windows too.
+      ws.on("close", () => {
+        if (!settled) { settled = true; resolve(); }
+      });
       rs.pipe(ws);
     });
   };
+
+  // Per-file failures inside a directory copy. Reset for each top-level
+  // item; a failure no longer aborts the whole directory.
+  let subErrors = [];
 
   const copyRecursive = async (src, dest) => {
     checkCancelled();
@@ -1649,11 +1705,13 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
         }
       }
 
-      // Copy small files in parallel
+      // Copy small files in parallel. allSettled: one unreadable file must
+      // not abandon the rest of the directory (and Promise.all would have
+      // left the other copies running in the background anyway).
       for (let i = 0; i < smallFiles.length; i += PARALLEL_LIMIT) {
         checkCancelled();
         const batch = smallFiles.slice(i, i + PARALLEL_LIMIT);
-        await Promise.all(batch.map(async ({ child, stats: cs }) => {
+        const results = await Promise.allSettled(batch.map(async ({ child, stats: cs }) => {
           const childSrc = path.join(src, child);
           const childDest = path.join(dest, child);
           await fs.copyFile(childSrc, childDest);
@@ -1662,11 +1720,25 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
           processedFiles++;
           reportProgress();
         }));
+        results.forEach((r, idx) => {
+          if (r.status === "rejected") {
+            const childSrc = path.join(src, batch[idx].child);
+            subErrors.push({ path: childSrc, error: r.reason?.message || String(r.reason) });
+            processedBytes += batch[idx].stats.size;
+            reportProgress();
+          }
+        });
       }
 
-      // Copy rest sequentially
+      // Copy rest sequentially; a failed child is recorded and skipped.
       for (const child of rest) {
-        await copyRecursive(path.join(src, child), path.join(dest, child));
+        const childSrc = path.join(src, child);
+        try {
+          await copyRecursive(childSrc, path.join(dest, child));
+        } catch (childErr) {
+          if (childErr?.code === "CANCELLED") throw childErr;
+          subErrors.push({ path: childSrc, error: childErr.message });
+        }
       }
 
       await preserveMetadata(src, dest, stats);
@@ -1787,6 +1859,7 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
       // finalDest === item.dest while it existed means "replace".
       const replaced = destExisted && finalDest === item.dest;
 
+      subErrors = [];
       try {
         if (replaced) {
           // "Replace" must actually replace: without this a directory copy
@@ -1817,6 +1890,16 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
             // Cross-device move: copy then verify before deleting source
             await copyRecursive(item.source, finalDest);
 
+            if (subErrors.length > 0) {
+              // Some children could not be copied: keep the source intact
+              // rather than deleting data that never made it across.
+              const err = new Error(
+                `${subErrors.length} file(s) could not be copied; source kept`,
+              );
+              err.partial = true;
+              throw err;
+            }
+
             // Verify copy by comparing sizes
             const srcStats = await fs.lstat(item.source);
             if (srcStats.isDirectory()) {
@@ -1835,8 +1918,10 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
         }
         completedItems++;
         completedList.push({ source: item.source, dest: finalDest, replaced });
+        if (subErrors.length > 0) errors.push(...subErrors);
       } catch (itemErr) {
         if (itemErr?.code === "CANCELLED") throw itemErr;
+        if (itemErr?.partial) errors.push(...subErrors);
         errors.push({ path: item.source, error: itemErr.message });
         const size = itemSizes.get(item.source) || 0;
         processedBytes += size;
@@ -2131,16 +2216,31 @@ ipcMain.handle("extract-archive", async (event, archivePath, destPath) => {
     let outputDir = path.join(
       destPath,
       baseName
-        .replace(/\.(zip|tar|gz|bz2|xz|7z|rar|tgz)$/gi, "")
-        .replace(/\.tar$/i, ""),
+        .replace(/\.(zip|tar|gz|bz2|xz|zst|7z|rar|tgz|tbz|tbz2|txz|tzst|iso)$/i, "")
+        .replace(/\.tar$/i, "") || baseName,
     );
+
+    // Never extract into something that already exists: an existing folder
+    // would be silently merged/overwritten (and its undo would delete the
+    // user's pre-existing files); an existing file would make mkdir fail.
+    let existed = false;
+    try { await fs.lstat(outputDir); existed = true; } catch { }
+    if (existed) outputDir = await findUniquePath(outputDir, "folder");
 
     try {
       await fs.mkdir(outputDir, { recursive: true });
-      await execAsync(path7za, ["x", archivePath, `-o${outputDir}`, "-y"]);
-      return { success: true, outputDir };
+      // -bso0/-bsp0: no per-file listing/progress on stdout — with the
+      // default 1MB maxBuffer a large archive got the child killed mid-way.
+      await execAsync(
+        path7za,
+        ["x", "-y", "-bso0", "-bsp0", `-o${outputDir}`, "--", archivePath],
+        { maxBuffer: 64 * 1024 * 1024 },
+      );
+      return { success: true, outputDir, created: true };
     } catch (cmdError) {
-      return { success: false, error: cmdError.message || cmdError.stderr || "Extraction failed" };
+      // Leave nothing behind if extraction failed into a folder we created.
+      try { await fs.rm(outputDir, { recursive: true, force: true }); } catch { }
+      return { success: false, error: cmdError.stderr || cmdError.message || "Extraction failed" };
     }
   } catch (error) {
     return { success: false, error: error.message };
@@ -2152,13 +2252,33 @@ ipcMain.handle("compress-items", async (event, paths, outputPath) => {
   const execAsync = promisify(execFile);
 
   try {
+    const nameError = validateEntryName(path.basename(outputPath));
+    if (nameError) return { success: false, error: nameError };
+    if (!Array.isArray(paths) || paths.length === 0) {
+      return { success: false, error: "Nothing to compress" };
+    }
+
+    // `7za a` on an existing archive *updates* it, leaving stale entries
+    // from whatever was there before. Refuse instead.
+    let exists = false;
+    try { await fs.lstat(outputPath); exists = true; } catch { }
+    if (exists) {
+      return { success: false, code: "EEXIST", error: `"${path.basename(outputPath)}" already exists` };
+    }
+
     try {
-      await execAsync(path7za, ["a", outputPath, ...paths]);
-      return { success: true };
+      // "--" so a file called "@list" or "-x" is not parsed as a switch.
+      await execAsync(
+        path7za,
+        ["a", "-bso0", "-bsp0", outputPath, "--", ...paths],
+        { maxBuffer: 64 * 1024 * 1024 },
+      );
+      return { success: true, outputPath };
     } catch (cmdError) {
+      try { await fs.rm(outputPath, { force: true }); } catch { }
       return {
         success: false,
-        error: cmdError.message || cmdError.stderr || "Compression failed",
+        error: cmdError.stderr || cmdError.message || "Compression failed",
       };
     }
   } catch (error) {

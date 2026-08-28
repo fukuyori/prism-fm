@@ -541,10 +541,13 @@ async function compressSelected() {
   );
   if (!archiveName) return;
 
-  const outputPath = localJoinPaths(
-    currentPath,
-    archiveName,
-  );
+  const validatedArchive = validateNewItemName(archiveName);
+  if (!validatedArchive.ok) {
+    showNotification(validatedArchive.reason, "error");
+    return;
+  }
+
+  const outputPath = localJoinPaths(currentPath, validatedArchive.name);
 
   enqueueOperation({
     label: formatOperationLabel("Compress", 1, `"${archiveName}"`),

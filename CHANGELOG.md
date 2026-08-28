@@ -17,6 +17,12 @@ All notable changes to Prism FM are documented in this file.
 - **Extract Here used the directory at run time** -- destination is captured when the operation is queued, so navigating away while it waits no longer extracts into the new folder
 - **Context menu built twice on Linux** -- removed the right-button `mouseup` opener; GTK fires `contextmenu` on mousedown so the dedupe flag was always one click out of phase
 - **Dropping a multi-selection onto one of its own folders** -- moved the rest of the selection into that folder; the drop is now refused (list-level `dragover` reports `dropEffect: none` for dragged rows and their descendants)
+- **Partial file left behind on cancelled/failed stream copy** -- the truncated destination is removed; the copy now also waits for the fd to close before applying chmod/utimes (Windows)
+- **One unreadable file aborted a whole directory copy** -- parallel small-file copy uses `allSettled`, sequential children catch per file; failures are collected into `errors` and the rest of the directory is still copied. A cross-device move with any failed child keeps the source intact
+- **Conflict dialog could wait forever** -- pending conflict prompts are answered "cancel" when the operation is cancelled or the window is destroyed, so `batch-file-operation` (and the quit confirmation it holds open) can't hang
+- **`create-folder` / `create-file` with an empty or path-like name** -- names are validated (empty name previously created `parent (1)` next to the parent)
+- **`extract-archive`** -- never extracts into an existing folder/file (unique name chosen instead, so Undo can't delete pre-existing content); output silenced and `maxBuffer` raised so large archives no longer get the child killed at 1MB of stdout; failed extraction removes the folder it created; more archive extensions recognised (`.tbz`, `.txz`, `.zst`, `.iso`, …)
+- **`compress-items`** -- refuses to write over an existing archive (7za would have *updated* it, leaving stale entries); `--` guards against `-x`/`@list` file names being parsed as switches; archive name validated in the renderer
 - **Operations panel stub shadowed the real implementation** -- leftover `updateOpsPanel`/`scheduleOpsRender` stubs after `scheduleIdle()` won by declaration order; removed along with dead duplicate progress/escape helpers in core.js
 
 ## [1.0.0-spumoni.4.0] - 2026-08-29
