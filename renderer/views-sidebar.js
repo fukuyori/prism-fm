@@ -320,16 +320,21 @@ function renderPinnedItems() {
 
 var driveRefreshInterval = null;
 
+var renderDisksSeq = 0;
+
 async function renderDisks() {
   if (!drivesListEl) return;
-  drivesListEl.innerHTML = "";
-
+  // Fetch first, replace atomically afterwards. Clearing before the await
+  // let the 5s poll and a manual refresh (after mount/eject) interleave
+  // and append the drive list twice.
+  const seq = ++renderDisksSeq;
   const drives = await fetchDrives();
-  const filtered = filterDrives(drives);
+  if (seq !== renderDisksSeq || !drivesListEl) return;
 
-  for (const d of filtered) {
-    drivesListEl.appendChild(createDriveRow(d));
-  }
+  const filtered = filterDrives(drives);
+  const rows = filtered.map((d) => createDriveRow(d));
+  drivesListEl.replaceChildren(...rows);
+  if (typeof syncQuickAccessHighlight === "function") syncQuickAccessHighlight();
 }
 
 function startDrivePolling() {

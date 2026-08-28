@@ -2,6 +2,18 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Split view Back/Forward showed the previous directory** -- `goBack`/`goForward` rendered before updating `pane.items`; unified into `navigateHistory()` which updates the pane model first. A history entry that no longer exists is now dropped with a notification instead of silently moving the index
+- **Stale navigation responses** -- `navigateTo`, history moves, `ensurePaneLoaded`, the preview pane and the drive list now carry a generation token; a slow response (network mount, huge folder) arriving after a newer request is discarded instead of overwriting the pane, tab snapshot or preview. Drive list is built off-DOM and swapped atomically, so the 5s poll can no longer duplicate rows; active-drive highlight is kept across polls
+- **Tag view in split view** -- navigating to `tag://…` now updates `pane.path`/`pane.items` so the right pane renders the tag results
+- **"Replace" merged directories** -- conflict resolution "Replace" now removes the existing destination before copying/moving, so directory replacement is complete (no stale files left), moving onto a non-empty directory no longer fails with ENOTEMPTY, and a symlink at the destination is replaced rather than having its target overwritten
+- **Move fallback on non-EXDEV errors** -- copy-then-delete emulation is only used when `rename` fails with `EXDEV`; a locked or permission-denied rename now reports the original error instead of producing a duplicate
+- **Disk space check on same-device moves** -- only bytes from sources on a different device than the destination are counted, so moving within a nearly-full volume is no longer refused
+- **Operations panel stub shadowed the real implementation** -- leftover `updateOpsPanel`/`scheduleOpsRender` stubs after `scheduleIdle()` won by declaration order; removed along with dead duplicate progress/escape helpers in core.js
+
 ## [1.0.0-spumoni.4.0] - 2026-08-29
 
 ### Added

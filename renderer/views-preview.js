@@ -26,9 +26,38 @@ function updatePreviewPanelContent() {
   renderPreviewEmpty();
 }
 
+var previewRenderSeq = 0;
+
+// Wrapper: renders into a detached element and only commits it to the
+// real preview panel if no newer preview request started in the meantime,
+// so a slow preview (large folder count, big image) can't overwrite the
+// one the user selected afterwards.
 async function renderPreviewItem(item) {
   if (!previewPanel || !previewContent) return;
+  const seq = ++previewRenderSeq;
+  const target = previewContent;
+  const scratch = document.createElement("div");
 
+  target.innerHTML = `
+    <div class="preview-loading">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+        <path d="M12 2 A10 10 0 0 1 22 12" stroke-linecap="round"/>
+      </svg>
+      <p>Loading preview...</p>
+    </div>
+  `;
+
+  try {
+    await renderPreviewItemInto(scratch, item);
+  } finally {
+    if (seq === previewRenderSeq) {
+      target.replaceChildren(...scratch.childNodes);
+    }
+  }
+}
+
+async function renderPreviewItemInto(previewContent, item) {
   previewContent.innerHTML = `
     <div class="preview-loading">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

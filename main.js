@@ -1546,13 +1546,28 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
     await scan(item.source, item.source);
   }
 
-  // Disk space check for copy operations (skip for same-device moves via rename)
+  // Disk space check. A move within one device is a rename and needs no
+  // free space, so for moves only count items whose source lives on a
+  // different device than the destination.
   if (totalBytes > 0 && items.length > 0) {
     try {
       const destDir = path.dirname(items[0].dest);
+      let bytesNeeded = totalBytes;
+      if (operation !== "copy") {
+        let destDev = null;
+        try { destDev = (await fs.stat(destDir)).dev; } catch { }
+        bytesNeeded = 0;
+        for (const item of items) {
+          let srcDev = null;
+          try { srcDev = (await fs.lstat(item.source)).dev; } catch { }
+          if (destDev === null || srcDev === null || srcDev !== destDev) {
+            bytesNeeded += itemSizes.get(item.source) || 0;
+          }
+        }
+      }
       const space = await getDiskSpace(destDir);
-      if (space && space.free > 0 && totalBytes > space.free) {
-        const needed = formatBytesCompact(totalBytes);
+      if (space && space.free > 0 && bytesNeeded > space.free) {
+        const needed = formatBytesCompact(bytesNeeded);
         const available = formatBytesCompact(space.free);
         return {
           success: false,
@@ -1773,6 +1788,15 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
       const replaced = destExisted && finalDest === item.dest;
 
       try {
+        if (replaced) {
+          // "Replace" must actually replace: without this a directory copy
+          // merges into the existing one (leaving stale files), a move onto a
+          // non-empty directory fails with ENOTEMPTY, and a symlink at dest
+          // would be followed and its target overwritten. fs.rm on a symlink
+          // removes the link itself, not the target.
+          await fs.rm(finalDest, { recursive: true, force: true });
+        }
+
         if (operation === "copy") {
           await copyRecursive(item.source, finalDest);
         } else {
@@ -1784,6 +1808,12 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
             processedBytes += size;
             reportProgress();
           } catch (renameErr) {
+            // Only a cross-device rename is worth emulating with copy+delete.
+            // Any other failure (EBUSY/EPERM lock on Windows, EACCES, …)
+            // would otherwise produce a duplicate whose source can't be
+            // removed, reported as an rm error.
+            if (renameErr?.code !== "EXDEV") throw renameErr;
+
             // Cross-device move: copy then verify before deleting source
             await copyRecursive(item.source, finalDest);
 

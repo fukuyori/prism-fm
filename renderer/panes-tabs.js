@@ -491,8 +491,22 @@ async function ensurePaneLoaded(paneId, fallbackPath) {
     pane.historyIndex = 0;
   }
 
+  // The pane object is shared across tabs (applyPaneSnapshot swaps its
+  // contents on tab switch), so remember what we asked for and discard the
+  // response if the tab or the pane's path changed while it was in flight.
+  const requestedPath = pane.path;
+  const tabAtStart = activeTabIndex !== -1 ? tabs[activeTabIndex] : null;
+  const requestSeq = (pane.loadSeq = (pane.loadSeq || 0) + 1);
+
   try {
     const result = await window.fileManager.getDirectoryContents(pane.path);
+    if (
+      pane.loadSeq !== requestSeq ||
+      pane.path !== requestedPath ||
+      (activeTabIndex !== -1 ? tabs[activeTabIndex] : null) !== tabAtStart
+    ) {
+      return;
+    }
     if (result.success) {
       pane.path = result.path;
       pane.items = result.contents;

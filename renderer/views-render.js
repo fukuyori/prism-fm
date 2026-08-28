@@ -940,78 +940,75 @@ async function openItem(item) {
   }
 }
 
-async function goBack() {
-  if (historyIndex > 0) {
-    historyIndex--;
-    const path = appHistory[historyIndex];
-    const result = await window.fileManager.getDirectoryContents(path);
-    if (result.success) {
-      currentPath = result.path;
-      currentItems = result.contents;
-      if (panes[activePaneId]) {
-        panes[activePaneId].isArchive = Boolean(result.isArchive);
-      }
-      const appContainer = document.querySelector(".app-container");
-      if (appContainer) {
-        appContainer.classList.toggle(
-          "archive-mode",
-          Boolean(result.isArchive),
-        );
-      }
-      updateUI();
-      if (splitViewEnabled && !pickerMode) {
-        renderAllPanes();
-      } else {
-        renderFiles();
-      }
-      selectedItems.clear();
-      updateStatusBar();
-      if (panes[activePaneId]) {
-        panes[activePaneId].path = currentPath;
-        panes[activePaneId].items = currentItems;
-        panes[activePaneId].appHistory = appHistory;
-        panes[activePaneId].historyIndex = historyIndex;
-        panes[activePaneId].selectedItems = selectedItems;
-      }
-    }
+// Move within the active pane's history by `delta` (-1 back, +1 forward).
+// The index is only committed after the directory loads, so a history
+// entry that no longer exists is skipped without desynchronising the
+// back/forward buttons from what is actually displayed.
+async function navigateHistory(delta) {
+  const targetIndex = historyIndex + delta;
+  if (targetIndex < 0 || targetIndex >= appHistory.length) return;
+
+  const nav = beginNavigation();
+  const path = appHistory[targetIndex];
+  let result;
+  try {
+    result = await window.fileManager.getDirectoryContents(path);
+  } catch (error) {
+    result = { success: false, error: error.message };
   }
+  if (isNavigationStale(nav)) return;
+
+  if (!result || !result.success) {
+    // Drop the unreachable entry so the next press skips it.
+    appHistory.splice(targetIndex, 1);
+    if (targetIndex < historyIndex) historyIndex--;
+    if (panes[activePaneId]) {
+      panes[activePaneId].appHistory = appHistory;
+      panes[activePaneId].historyIndex = historyIndex;
+    }
+    updateNavigationButtons();
+    showNotification(
+      `Cannot open ${path}: ${result?.error || "not found"}`,
+      "error",
+    );
+    return;
+  }
+
+  historyIndex = targetIndex;
+  currentPath = result.path;
+  currentItems = result.contents;
+  selectedItems.clear();
+
+  // Update the pane model BEFORE rendering: renderPane() reads pane.items,
+  // not the currentItems global.
+  if (panes[activePaneId]) {
+    panes[activePaneId].path = currentPath;
+    panes[activePaneId].items = currentItems;
+    panes[activePaneId].isArchive = Boolean(result.isArchive);
+    panes[activePaneId].appHistory = appHistory;
+    panes[activePaneId].historyIndex = historyIndex;
+    panes[activePaneId].selectedItems = selectedItems;
+  }
+  const appContainer = document.querySelector(".app-container");
+  if (appContainer) {
+    appContainer.classList.toggle("archive-mode", Boolean(result.isArchive));
+  }
+
+  updateUI();
+  if (splitViewEnabled && !pickerMode) {
+    renderAllPanes();
+  } else {
+    renderFiles();
+  }
+  updateStatusBar();
+}
+
+async function goBack() {
+  await navigateHistory(-1);
 }
 
 async function goForward() {
-  if (historyIndex < appHistory.length - 1) {
-    historyIndex++;
-    const path = appHistory[historyIndex];
-    const result = await window.fileManager.getDirectoryContents(path);
-    if (result.success) {
-      currentPath = result.path;
-      currentItems = result.contents;
-      if (panes[activePaneId]) {
-        panes[activePaneId].isArchive = Boolean(result.isArchive);
-      }
-      const appContainer = document.querySelector(".app-container");
-      if (appContainer) {
-        appContainer.classList.toggle(
-          "archive-mode",
-          Boolean(result.isArchive),
-        );
-      }
-      updateUI();
-      if (splitViewEnabled && !pickerMode) {
-        renderAllPanes();
-      } else {
-        renderFiles();
-      }
-      selectedItems.clear();
-      updateStatusBar();
-      if (panes[activePaneId]) {
-        panes[activePaneId].path = currentPath;
-        panes[activePaneId].items = currentItems;
-        panes[activePaneId].appHistory = appHistory;
-        panes[activePaneId].historyIndex = historyIndex;
-        panes[activePaneId].selectedItems = selectedItems;
-      }
-    }
-  }
+  await navigateHistory(1);
 }
 
 async function goUp() {

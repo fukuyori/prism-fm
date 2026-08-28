@@ -1,7 +1,22 @@
+// Monotonic counter for in-flight navigations. Every navigateTo /
+// history move bumps it; after each await the caller checks that it is
+// still the newest request for the same pane, otherwise a slow response
+// (network mount, huge directory) would overwrite a newer navigation.
+var navigationSeq = 0;
+
+function beginNavigation() {
+  return { seq: ++navigationSeq, paneId: activePaneId };
+}
+
+function isNavigationStale(token) {
+  return token.seq !== navigationSeq || token.paneId !== activePaneId;
+}
+
 async function navigateTo(path) {
+  const nav = beginNavigation();
+
   if (path.startsWith("tag://")) {
     const color = path.replace("tag://", "");
-    currentPath = path;
 
     const paths = Object.entries(fileTags)
       .filter(([p, tags]) => tags.includes(color))
@@ -22,9 +37,14 @@ async function navigateTo(path) {
       } catch (e) { }
     }
 
+    if (isNavigationStale(nav)) return;
+
+    currentPath = path;
     currentItems = items;
     if (panes[activePaneId]) {
       panes[activePaneId].isArchive = false;
+      panes[activePaneId].path = currentPath;
+      panes[activePaneId].items = currentItems;
     }
     const appContainer = document.querySelector(".app-container");
     if (appContainer) {
@@ -40,6 +60,7 @@ async function navigateTo(path) {
 
   try {
     const result = await window.fileManager.getDirectoryContents(path);
+    if (isNavigationStale(nav)) return;
 
     if (result.success) {
       currentPath = result.path;
