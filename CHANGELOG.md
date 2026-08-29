@@ -10,6 +10,10 @@ All notable changes to Prism FM are documented in this file.
 - **`npm start` aborted with "SUID sandbox helper binary ... not configured correctly"** -- on kernels that restrict unprivileged user namespaces (Ubuntu 24.04+), `run-electron.sh` now passes `--no-sandbox` unless `chrome-sandbox` is actually setuid root; the `--no-sandbox` push in main.js ran too late to matter. Falls back to the project-local electron binary when none is on PATH
 - **Drag & drop rework** -- `dragstart` no longer starts an HTML5 and a native drag session at once (the double session from 3.7). Windows/macOS: native `webContents.startDrag` only (Electron's documented pattern). Linux: HTML5 session only; pane-to-pane, folder and sidebar drops work again under Wayland. Dropped-file path extraction centralised in `getDroppedPaths()`
 
+### Fixed (cont.)
+
+- **Context submenu never appeared** -- "New ▸" (File / Folder) had been invisible since 3.6: the scroll fix put `overflow-y: auto` on `.context-menu`, which clipped the absolutely-positioned submenu rendered outside that box. Scrolling moved to `.context-menu-panel`
+
 ### Changed
 
 - **Electron 28 → 44** -- runtime updated to the current supported line (28 reached end of support in June 2024). Dropped-file paths now come from `webUtils.getPathForFile` (Electron 32 removed `File.path`), exposed as `fileManager.getPathForFile` in preload. Verified: launch under Wayland/X11, `electron-builder --linux --dir` with electron-builder 24.13.3, packaged binary launch. Does not change the Wayland drag-out limitation below

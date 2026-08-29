@@ -1516,7 +1516,10 @@ body.platform-win32 .window-controls {
     padding: 8px 0;
     min-width: 220px;
     max-height: calc(100vh - 20px);
-    overflow-y: auto;
+    /* No overflow here: the submenu is absolutely positioned outside this
+       box and overflow-y:auto (added in 3.6 for scrolling) clipped it away.
+       Scrolling lives on .context-menu-panel instead. */
+    overflow: visible;
     box-shadow: var(--shadow);
     z-index: 1000;
     display: none;
@@ -1542,6 +1545,8 @@ body.platform-win32 .window-controls {
 .context-menu-panel {
     display: flex;
     flex-direction: column;
+    max-height: calc(100vh - 38px);
+    overflow-y: auto;
 }
 
 .context-submenu {
