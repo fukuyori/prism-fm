@@ -65,9 +65,9 @@ function setupSidebarToggle() {
   // progress and must NOT clear the drag state (that made every
   // pane-to-pane drop on Linux fall into the "external files" branch with
   // an empty list, i.e. do nothing).
-  const isLinux = window.fileManager.platform === "linux";
+  // Linux uses an HTML5 drag session (see setupDragHandlers) and never
+  // calls startDrag, so this message only arrives on Windows/macOS.
   window.fileManager.onDragEnded(() => {
-    if (isLinux) return;
     setTimeout(() => {
       if (isDragging) cleanupDragState();
     }, 100);

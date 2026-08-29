@@ -332,16 +332,6 @@ function setupDragHandlers(element, item) {
   element.draggable = true;
 
   element.addEventListener("dragstart", (e) => {
-    // Native drag only (Electron's documented pattern: preventDefault the
-    // HTML5 session, then webContents.startDrag). Running both at once —
-    // as 3.7 did — starts two OS drag sessions from one gesture: on
-    // Windows/macOS startDrag blocks in a nested loop while the HTML5 drag
-    // is initialising (the crash 3.1 worked around), and on Linux the two
-    // sessions fight over the pointer grab. A native drag still delivers
-    // dragover/drop to our own window with the files in dataTransfer.files,
-    // so pane-to-pane drops keep working through the same handlers.
-    e.preventDefault();
-
     isDragging = true;
     const paneId = element.closest(".file-pane")?.dataset.pane;
     if (paneId && paneId !== activePaneId) {
@@ -355,8 +345,45 @@ function setupDragHandlers(element, item) {
     }
     element.classList.add("dragging");
 
-    window.fileManager.startDrag(draggedItems);
+    if (usesNativeDrag()) {
+      // Windows/macOS: Electron's documented pattern — suppress the HTML5
+      // session and let webContents.startDrag run the OS drag. Running
+      // both at once (3.7) started two drag sessions from one gesture.
+      e.preventDefault();
+      window.fileManager.startDrag(draggedItems);
+      return;
+    }
+
+    // Linux: webContents.startDrag does not start a drag under Wayland in
+    // Electron 28 (nothing happens), so use the HTML5 session and export
+    // the files as text/uri-list — the MIME GTK/Qt file managers, desktops
+    // and browsers accept as "files" — plus text/plain as a fallback.
+    e.dataTransfer.effectAllowed = "copyMove";
+    e.dataTransfer.setData("text/uri-list", draggedItems.map(pathToFileUri).join("\r\n"));
+    e.dataTransfer.setData("text/plain", draggedItems.join("\n"));
+    e.dataTransfer.setData("application/x-prism-drag", "1");
   });
+
+  // HTML5 sessions end with dragend (drop anywhere, Escape, release over
+  // nothing). Native sessions signal through "drag-ended" instead.
+  element.addEventListener("dragend", () => {
+    if (isDragging) cleanupDragState();
+  });
+}
+
+function usesNativeDrag() {
+  return window.fileManager.platform !== "linux";
+}
+
+function pathToFileUri(p) {
+  // Encode per path segment: encodeURI leaves "#" and "?" alone, which
+  // would truncate the URI for such file names.
+  const s = String(p);
+  const enc = (str) => str.split("/").map((seg) => encodeURIComponent(seg)).join("/");
+  if (window.fileManager.platform === "win32") {
+    return "file:///" + enc(s.replace(/\\/g, "/"));
+  }
+  return "file://" + enc(s);
 }
 
 // Paths of files dropped from outside the app (or from our own native
