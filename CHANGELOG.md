@@ -8,7 +8,11 @@ All notable changes to Prism FM are documented in this file.
 
 - **Crash on launch under Wayland** -- `screen.getCursorScreenPoint()` (used since 3.5 to open the window on the cursor's monitor) segfaults in Electron 28 on Wayland; the primary display is used there instead (Wayland ignores window positions anyway). Also affected every version since 3.5
 - **`npm start` aborted with "SUID sandbox helper binary ... not configured correctly"** -- on kernels that restrict unprivileged user namespaces (Ubuntu 24.04+), `run-electron.sh` now passes `--no-sandbox` unless `chrome-sandbox` is actually setuid root; the `--no-sandbox` push in main.js ran too late to matter. Falls back to the project-local electron binary when none is on PATH
-- **Drag-out to external apps** -- `dragstart` starts only the native drag (`e.preventDefault()` + `webContents.startDrag`, Electron's documented pattern) instead of an HTML5 and a native session at once; on Linux the `drag-ended` message (sent immediately because `startDrag` returns at once there) no longer clears drag state mid-drag, which made pane-to-pane drops do nothing. Drag end is detected via pointer movement with no button held / Escape. Dropped-file path extraction centralised in `getDroppedPaths()`
+- **Drag & drop rework** -- `dragstart` no longer starts an HTML5 and a native drag session at once (the double session from 3.7). Windows/macOS: native `webContents.startDrag` only (Electron's documented pattern). Linux: HTML5 session only; pane-to-pane, folder and sidebar drops work again under Wayland. Dropped-file path extraction centralised in `getDroppedPaths()`
+
+### Known limitations
+
+- **Drag-out to other applications on Wayland** -- not possible: Chromium's Wayland backend only starts a drag from inside pointer-event handling, which Electron's `webContents.startDrag` (IPC-driven) never satisfies — verified on GNOME 50 with Electron 28 and 44, from `dragstart` and from a mousedown/threshold detector. An HTML5 drag from web content cannot carry file paths (only text), so other apps receive a "Dragged Text" file. Drag-out works under X11/XWayland (`npm start -- --ozone-platform=x11`), where in-app drops need further work
 
 ## [1.0.0-spumoni.4.1] - 2026-08-29
 
