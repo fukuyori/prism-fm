@@ -70,14 +70,11 @@ function setupSidebarToggle() {
   // asynchronous — there it must not clear the state of a drag that is
   // still in progress. Linux relies on the drop handlers and the
   // mousemove/Escape fallbacks below instead.
-  const isLinux = window.fileManager.platform === "linux";
   window.fileManager.onDragEnded(() => {
-    if (isLinux) return;
     setTimeout(() => {
       if (isDragging) cleanupDragState();
     }, 100);
   });
-  if (typeof setupNativeDragDetection === "function") setupNativeDragDetection();
 
   // Fallback end-of-drag detection for every platform: once the pointer
   // moves over our window with no button held, the drag is over (it was

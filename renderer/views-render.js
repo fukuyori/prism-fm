@@ -328,27 +328,22 @@ function buildItemHtml(
     `;
 }
 
-// Native OS drag for every platform (only a native drag carries real file
-// paths — text/uri-list — to other apps; an HTML5 session from web content
-// can only export text). How it is started differs:
-//   Windows/macOS: from dragstart with preventDefault (Electron's documented
-//                  pattern; startDrag blocks until the drop there).
-//   Linux/Wayland: startDrag issued from inside Blink's dragstart handling
-//                  never produced a drag session (Electron 28, GNOME 50), so
-//                  the HTML5 machinery is bypassed entirely: the row is not
-//                  draggable and the drag is started from our own
-//                  mousedown → movement-threshold detection.
-// In both cases the OS drag is delivered back to our own window as
-// dragover/drop with the files in dataTransfer.files, and the drop handlers
-// prefer the in-app drag state (draggedItems) when it is set.
-var pendingNativeDrag = null;
-const NATIVE_DRAG_THRESHOLD_PX = 6;
-
-function usesDragstartNativeDrag() {
+// Drag start strategy per platform.
+//   Windows/macOS: native OS drag from dragstart with preventDefault
+//                  (Electron's documented pattern). Only a native drag
+//                  carries real file paths (text/uri-list) to other apps.
+//   Linux:         HTML5 drag. webContents.startDrag never produces a drag
+//                  session under Wayland in Electron 28 (tested on GNOME 50
+//                  both from dragstart and from a mousedown/threshold
+//                  detector), so in-app drags use the HTML5 session. Web
+//                  content cannot export file paths through it — other apps
+//                  receive text — so drag-out to external apps on Wayland
+//                  needs a newer Electron; see CHANGELOG.
+function usesNativeDrag() {
   return window.fileManager.platform !== "linux";
 }
 
-function beginNativeDrag(element, item) {
+function beginDragState(element, item) {
   isDragging = true;
   const paneId = element.closest(".file-pane")?.dataset.pane;
   if (paneId && paneId !== activePaneId) {
@@ -361,44 +356,44 @@ function beginNativeDrag(element, item) {
     draggedItems = [item.path];
   }
   element.classList.add("dragging");
-  window.fileManager.startDrag(draggedItems);
+}
+
+function pathToFileUri(p) {
+  // Encode per path segment: encodeURI leaves "#" and "?" alone, which
+  // would truncate the URI for such file names.
+  const enc = (str) => str.split("/").map((seg) => encodeURIComponent(seg)).join("/");
+  const s = String(p);
+  if (window.fileManager.platform === "win32") {
+    return "file:///" + enc(s.replace(/\\/g, "/"));
+  }
+  return "file://" + enc(s);
 }
 
 function setupDragHandlers(element, item) {
-  if (usesDragstartNativeDrag()) {
-    element.draggable = true;
-    element.addEventListener("dragstart", (e) => {
+  element.draggable = true;
+
+  element.addEventListener("dragstart", (e) => {
+    beginDragState(element, item);
+
+    if (usesNativeDrag()) {
       e.preventDefault();
-      beginNativeDrag(element, item);
-    });
-    return;
-  }
-
-  element.draggable = false;
-  element.addEventListener("mousedown", (e) => {
-    if (e.button !== 0) return;
-    pendingNativeDrag = { element, item, x: e.clientX, y: e.clientY };
-  });
-}
-
-function setupNativeDragDetection() {
-  if (usesDragstartNativeDrag()) return;
-  document.addEventListener("mousemove", (e) => {
-    if (!pendingNativeDrag) return;
-    if ((e.buttons & 1) === 0) {
-      pendingNativeDrag = null;
+      window.fileManager.startDrag(draggedItems);
       return;
     }
-    const dx = e.clientX - pendingNativeDrag.x;
-    const dy = e.clientY - pendingNativeDrag.y;
-    if (dx * dx + dy * dy < NATIVE_DRAG_THRESHOLD_PX * NATIVE_DRAG_THRESHOLD_PX) return;
-    const { element, item } = pendingNativeDrag;
-    pendingNativeDrag = null;
-    if (!document.contains(element)) return;
-    beginNativeDrag(element, item);
+
+    e.dataTransfer.effectAllowed = "copyMove";
+    // text/uri-list is what file managers accept as files; under Wayland
+    // Chromium currently downgrades it to a URL/text offer, but keep it for
+    // X11 sessions and future Electron versions.
+    e.dataTransfer.setData("text/uri-list", draggedItems.map(pathToFileUri).join("\r\n"));
+    e.dataTransfer.setData("text/plain", draggedItems.join("\n"));
+    e.dataTransfer.setData("application/x-prism-drag", "1");
   });
-  document.addEventListener("mouseup", () => {
-    pendingNativeDrag = null;
+
+  // HTML5 sessions end with dragend (drop anywhere, Escape, release over
+  // nothing). Native sessions signal through "drag-ended" instead.
+  element.addEventListener("dragend", () => {
+    if (isDragging) cleanupDragState();
   });
 }
 
