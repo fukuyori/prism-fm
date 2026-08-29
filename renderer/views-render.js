@@ -340,7 +340,8 @@ function buildItemHtml(
 //                  receive text — so drag-out to external apps on Wayland
 //                  needs a newer Electron; see CHANGELOG.
 function usesNativeDrag() {
-  return window.fileManager.platform !== "linux";
+  if (window.fileManager.platform !== "linux") return true;
+  return Boolean(window.fileManager.nativeDragOverride);
 }
 
 function beginDragState(element, item) {
