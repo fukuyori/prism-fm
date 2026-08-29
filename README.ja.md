@@ -92,6 +92,15 @@ npm run build:mac      # macOS（DMG）
 npm run build:linux    # Linux（AppImage + deb）
 ```
 
+**Linux の deb 作成スクリプト**（`scripts/build-linux.sh`）: ツールチェーン確認 → 依存と Electron バイナリの取得 → ビルド → `dpkg-deb` によるパッケージ検証 → （任意で）展開版の起動テスト、までを一括で行います:
+
+```bash
+npm run build:linux:deb                       # -> dist/prism-fm-<version>-amd64.deb
+scripts/build-linux.sh --clean --smoke        # dist/ を削除してからビルドし、6 秒間起動して確認
+scripts/build-linux.sh --appimage             # AppImage も生成
+scripts/build-linux.sh --install              # 生成した deb を sudo apt install
+```
+
 **2ステップビルド（コード署名用）:**
 
 ```bash

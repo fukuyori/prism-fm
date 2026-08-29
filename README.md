@@ -138,6 +138,15 @@ npm run build:mac      # macOS (DMG)
 npm run build:linux    # Linux (AppImage + deb)
 ```
 
+**Linux .deb with checks** (`scripts/build-linux.sh`): verifies the toolchain, installs missing dependencies and the Electron binary, builds, validates the package with `dpkg-deb`, and optionally smoke-tests the unpacked build:
+
+```bash
+npm run build:linux:deb                       # -> dist/prism-fm-<version>-amd64.deb
+scripts/build-linux.sh --clean --smoke        # wipe dist/ first, launch the build for 6s afterwards
+scripts/build-linux.sh --appimage             # also produce the AppImage
+scripts/build-linux.sh --install              # sudo apt install the result
+```
+
 **Two-step build (for code signing):**
 
 ```bash
