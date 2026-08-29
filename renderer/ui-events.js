@@ -59,17 +59,11 @@ function setupSidebarToggle() {
     }
   });
 
-  // "drag-ended" is sent when webContents.startDrag returns. On Windows and
-  // macOS that is when the OS drag finished; on Linux startDrag returns
-  // immediately, so the message arrives while the drag is still in
-  // progress and must NOT clear the drag state (that made every
-  // pane-to-pane drop on Linux fall into the "external files" branch with
-  // an empty list, i.e. do nothing).
-  // "drag-ended" is sent when webContents.startDrag returns: at the end of
-  // the drag on Windows/macOS, but immediately on Linux where startDrag is
-  // asynchronous — there it must not clear the state of a drag that is
-  // still in progress. Linux relies on the drop handlers and the
-  // mousemove/Escape fallbacks below instead.
+  // "drag-ended" is sent when webContents.startDrag returns, i.e. when the
+  // OS drag finished (it blocks in a nested loop on every platform —
+  // measured 1.6–6.8s on Wayland). Our own drop handler, if the drop landed
+  // in-app, runs within the next task; the delay lets it consume the state
+  // first.
   window.fileManager.onDragEnded(() => {
     rlog.info("dnd", "native drag ended (startDrag returned)", { isDragging });
     setTimeout(() => {
@@ -376,8 +370,15 @@ function setupFileListHandlers() {
       }
     });
 
+    let lastEnterLogged = null;
     listEl.addEventListener("dragenter", (e) => {
-      rlog.debug("dnd", "dragenter list", { pane: paneId, isDragging, dragged: draggedItems.length, types: Array.from(e.dataTransfer.types || []) });
+      // Bubbles from every row; log once per pane entry.
+      if (lastEnterLogged === paneId && isDragging) return;
+      lastEnterLogged = paneId;
+      rlog.debug("dnd", "dragenter list", { pane: paneId, isDragging, dragged: draggedItems.length, types: Array.from(e.dataTransfer.types || []), effectAllowed: e.dataTransfer.effectAllowed });
+    });
+    listEl.addEventListener("dragleave", (e) => {
+      if (!listEl.contains(e.relatedTarget)) lastEnterLogged = null;
     });
     listEl.addEventListener("dragover", (e) => {
       // Refuse the drop when the row under the cursor is one of the dragged
@@ -396,7 +397,7 @@ function setupFileListHandlers() {
         }
       }
       e.preventDefault();
-      e.dataTransfer.dropEffect = isCopyModifier(e) ? "copy" : "move";
+      e.dataTransfer.dropEffect = chooseDropEffect(e);
 
       const rect = listEl.getBoundingClientRect();
       const edgeSize = 50;
@@ -755,7 +756,7 @@ function setupQuickAccess() {
       const tagColor = sidebarItem.dataset.tagColor;
 
       if (pinnedPath || builtinKey) {
-        e.dataTransfer.dropEffect = isCopyModifier(e) ? "copy" : "move";
+        e.dataTransfer.dropEffect = chooseDropEffect(e);
         sidebarItem.classList.add("drop-target");
         sidebar.classList.remove("drag-over");
 

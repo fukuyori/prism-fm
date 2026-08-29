@@ -328,17 +328,15 @@ function buildItemHtml(
     `;
 }
 
-// Drag start strategy per platform.
-//   Windows/macOS: native OS drag from dragstart with preventDefault
-//                  (Electron's documented pattern). Only a native drag
-//                  carries real file paths (text/uri-list) to other apps.
-//   Linux:         HTML5 drag. webContents.startDrag never produces a drag
-//                  session under Wayland in Electron 28 (tested on GNOME 50
-//                  both from dragstart and from a mousedown/threshold
-//                  detector), so in-app drags use the HTML5 session. Web
-//                  content cannot export file paths through it — other apps
-//                  receive text — so drag-out to external apps on Wayland
-//                  needs a newer Electron; see CHANGELOG.
+// Drag start strategy.
+//   Native OS drag (webContents.startDrag) everywhere by default: it is the
+//   only way to hand real file paths (text/uri-list) to other apps. On
+//   Windows/macOS and on Linux (Wayland and X11) startDrag blocks until the
+//   drop and delivers dragover/drop back to our own window with the files
+//   in dataTransfer.files. Note it only allows copy/link, so dragover must
+//   not ask for "move" (see chooseDropEffect).
+//   Linux can fall back to the HTML5 session with PRISM_NATIVE_DRAG=0; other
+//   apps then receive text only.
 function usesNativeDrag() {
   if (window.fileManager.platform !== "linux") return true;
   return Boolean(window.fileManager.nativeDragOverride);
@@ -436,7 +434,7 @@ function setupFolderDropHandlers(element, item) {
     if (draggedItems.includes(item.path)) return;
     if (draggedItems.some((p) => item.path.startsWith(p + "/"))) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = isCopyModifier(e) ? "copy" : "move";
+    e.dataTransfer.dropEffect = chooseDropEffect(e);
     element.classList.add("drop-target");
     const paneId = element.closest(".file-pane")?.dataset.pane;
     if (paneId && paneId !== activePaneId) {

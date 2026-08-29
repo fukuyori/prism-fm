@@ -519,7 +519,7 @@ function attachDriveDragDropHandlers(row, drive) {
     }
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = isCopyModifier(e) ? "copy" : "move";
+    e.dataTransfer.dropEffect = chooseDropEffect(e);
     row.classList.add("drop-target");
 
     if (!dragHoverTimer) {

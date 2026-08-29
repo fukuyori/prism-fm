@@ -91,9 +91,9 @@ const fileManagerApi = {
   getLogInfo: invoke("get-log-info"),
   setLogLevel: invoke("set-log-level"),
   openLogFolder: invoke("open-log-folder"),
-  // Linux: opt into native webContents.startDrag instead of the HTML5 drag
-  // (PRISM_NATIVE_DRAG=1). Works under X11; see docs/known-issues.md.
-  nativeDragOverride: process.env.PRISM_NATIVE_DRAG === "1",
+  // Linux: native webContents.startDrag is the default (works on Wayland and
+  // X11); PRISM_NATIVE_DRAG=0 falls back to the HTML5 drag session.
+  nativeDragOverride: process.env.PRISM_NATIVE_DRAG !== "0",
   platform: process.platform,
   appVersion: invoke("get-app-version"),
 };

@@ -52,6 +52,22 @@ function isCopyModifier(e) {
   return window.fileManager?.platform === "darwin" ? Boolean(e.altKey) : Boolean(e.ctrlKey);
 }
 
+// dropEffect for a dragover, constrained to what the drag source allows.
+// Blink refuses the drop (no `drop` event) when dropEffect is not within
+// effectAllowed. Electron's webContents.startDrag only allows copy/link, so
+// asking for "move" on an in-app native drag silently killed every drop.
+// The in-app move/copy decision is made from our own drag state, not from
+// the OS drop effect, so falling back to "copy" here is purely cosmetic.
+function chooseDropEffect(e) {
+  const wantCopy = isCopyModifier(e);
+  const allowed = String(e?.dataTransfer?.effectAllowed || "all").toLowerCase();
+  const any = allowed === "all" || allowed === "uninitialized";
+  const allowsMove = any || allowed.includes("move");
+  const allowsCopy = any || allowed.includes("copy");
+  if (wantCopy) return allowsCopy ? "copy" : allowsMove ? "move" : "copy";
+  return allowsMove ? "move" : allowsCopy ? "copy" : "move";
+}
+
 function isPathWithin(basePath, candidatePath) {
   if (!basePath || !candidatePath) return false;
   const base = normalizePathForCompare(basePath);
