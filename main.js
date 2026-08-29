@@ -1756,10 +1756,10 @@ ipcMain.on("start-drag", (event, filePaths) => {
   try {
     // Synchronous until the drag ends on Windows/macOS; returns at once
     // on Linux (the renderer accounts for that).
-    log.debug("startDrag", { count: filePaths.length, first: filePaths.slice(0, 3) });
+    log.info("startDrag", { count: filePaths.length, first: filePaths.slice(0, 3) });
     const t0 = Date.now();
     event.sender.startDrag({ files: filePaths, icon });
-    log.debug(`startDrag returned after ${Date.now() - t0}ms`);
+    log.info(`startDrag returned after ${Date.now() - t0}ms`);
   } catch (error) {
     log.warn("startDrag failed", errInfo(error));
   }

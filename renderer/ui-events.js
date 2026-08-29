@@ -71,7 +71,7 @@ function setupSidebarToggle() {
   // still in progress. Linux relies on the drop handlers and the
   // mousemove/Escape fallbacks below instead.
   window.fileManager.onDragEnded(() => {
-    rlog.debug("dnd", "drag-ended from main", { isDragging });
+    rlog.info("dnd", "native drag ended (startDrag returned)", { isDragging });
     setTimeout(() => {
       if (isDragging) cleanupDragState();
     }, 100);

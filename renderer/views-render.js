@@ -374,7 +374,7 @@ function setupDragHandlers(element, item) {
 
   element.addEventListener("dragstart", (e) => {
     beginDragState(element, item);
-    rlog.debug("dnd", "dragstart", { native: usesNativeDrag(), count: draggedItems.length, first: draggedItems.slice(0, 3), pane: dragSourcePaneId });
+    rlog.info("dnd", `dragstart (${usesNativeDrag() ? "native" : "html5"})`, { count: draggedItems.length, first: draggedItems.slice(0, 3), pane: dragSourcePaneId });
 
     if (usesNativeDrag()) {
       e.preventDefault();
@@ -393,7 +393,14 @@ function setupDragHandlers(element, item) {
 
   // HTML5 sessions end with dragend (drop anywhere, Escape, release over
   // nothing). Native sessions signal through "drag-ended" instead.
-  element.addEventListener("dragend", () => {
+  element.addEventListener("dragend", (e) => {
+    // dropEffect tells how the drag ended: "none" = cancelled or refused
+    // (Escape, released over nothing, target declined); "copy"/"move"/
+    // "link" = a target accepted it. If our own drop handler already ran,
+    // isDragging is false by now; otherwise the target was external.
+    const effect = e.dataTransfer?.dropEffect || "none";
+    const where = isDragging ? (effect === "none" ? "cancelled" : "external target") : "in-app drop";
+    rlog.info("dnd", `dragend: ${where}`, { dropEffect: effect, count: draggedItems.length || undefined });
     if (isDragging) cleanupDragState();
   });
 }
