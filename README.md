@@ -8,7 +8,17 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 >
 > We would like to express our sincere gratitude to both **TechyTechster**, the original creator of ez-fm, and **compiledkernel-idk**, who maintained and published prism-fm. The clean architecture and thoughtful design of the original project made it possible to extend it into a full cross-platform file manager. Thank you both for your contributions to the open-source community.
 
-![Preview](file-manager.png)
+![Split view](docs/screenshots/split-view.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/preview-pane.png" alt="Preview pane"><br><sub>Preview pane with image metadata</sub></td>
+    <td width="50%"><img src="docs/screenshots/context-menu.png" alt="Context menu"><br><sub>Context menu with tags, undo, terminal and compress</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/customize.png" alt="Customize dialog"><br><sub>Customize: terminal, theme presets, glass/transparency, logging and drag-out options</sub></td>
+  </tr>
+</table>
 
 ## Recent Changes
 

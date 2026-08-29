@@ -8,7 +8,17 @@ Electron を利用した、軽量で透過対応のファイルマネージャ�
 >
 > オリジナルの ez-fm を開発された **TechyTechster** 氏、そして prism-fm として公開・メンテナンスされた **compiledkernel-idk** 氏の両者に心より感謝いたします。洗練されたアーキテクチャと丁寧な設計のおかげで、クロスプラットフォーム対応のファイルマネージャーへと発展させることができました。オープンソースコミュニティへの貢献に深く御礼申し上げます。
 
-![Preview](file-manager.png)
+![分割ビュー](docs/screenshots/split-view.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/preview-pane.png" alt="プレビューペイン"><br><sub>画像メタデータ付きのプレビューペイン</sub></td>
+    <td width="50%"><img src="docs/screenshots/context-menu.png" alt="コンテキストメニュー"><br><sub>タグ・Undo・ターミナル・圧縮を備えたコンテキストメニュー</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/customize.png" alt="Customize ダイアログ"><br><sub>Customize: ターミナル、テーマプリセット、透過設定、ログ、ドラッグアウト移動</sub></td>
+  </tr>
+</table>
 
 ## 最近の変更
 
