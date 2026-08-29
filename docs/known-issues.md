@@ -1,6 +1,6 @@
 # 問題点の整理と今後の方向性
 
-最終更新: 2026-08-29（v1.0.0-spumoni.4.1 + main `893ba4f` 時点）
+最終更新: 2026-08-29（v1.0.0-spumoni.4.1 + main `f6d35f4` 時点）
 
 本書は 2026-08-29 に実施したコード監査（main.js のファイル操作、レンダラーの操作フロー、GUI）と、その後の修正・検証で判明した事項をまとめたもの。監査時の指摘は High/Medium/Low で分類し、対応状況を記す。
 
@@ -41,6 +41,7 @@
 | 進捗バーが次の操作開始 700ms 以内に消える | タイマーをキャンセル | 4.0 |
 | Wayland で起動時 SIGSEGV（v3.5 以降） | `screen.getCursorScreenPoint()` を Wayland では回避 | main |
 | `npm start` が SUID sandbox エラーで中断（Ubuntu 24.04+） | 起動スクリプトで `--no-sandbox` を付与 | main |
+| コンテキストメニューのサブメニュー（New ▸ File/Folder）が表示されない（3.6 以降） | `.context-menu` の `overflow-y: auto` がサブメニューをクリップしていた。スクロールを `.context-menu-panel` に移動。位置も開いた行に揃える | main |
 
 ### 1.3 ファイル操作の信頼性（Medium）
 
@@ -56,6 +57,14 @@
 | `extract-archive` が既存フォルダへ上書き展開、maxBuffer 1MB で SIGTERM | ユニーク名、`-bso0 -bsp0`、64MB | 4.1 |
 | `compress-items` が既存アーカイブに追記、`-x`/`@list` 名を誤解釈 | 既存拒否、`--` 区切り | 4.1 |
 | Cut 直後のクリップボードクリア | 成功後にクリア | 4.1 |
+
+### 1.4 基盤
+
+| 項目 | 内容 | バージョン |
+|---|---|---|
+| Electron 28 → 44 | 28 は 2024 年 6 月にサポート終了。`File.path` 廃止に対応（`webUtils.getPathForFile`）。Wayland/X11 起動、`electron-builder --linux --dir`（builder 24.13.3）、パッケージ済みバイナリ起動を確認。Windows/macOS ビルドは未検証 | main |
+| ロギング基盤 | ファイルログ（`app.getPath("logs")/prism-fm.log`、5MB×3 ローテーション）、`PRISM_LOG=debug` / Customize の「Debug log」トグル、IPC 自動計測、ファイル操作内部・操作キュー・競合ダイアログ・ナビゲーション・D&D・ユーザー操作の記録、renderer の console/例外転送、`uncaughtException`/`render-process-gone` 等の捕捉、「Open Log Folder」ボタン。詳細は §3 | main |
+| 起動スクリプト | `--ozone-platform=` の明示指定を優先、グローバル electron が無ければプロジェクト内のものを使用 | main |
 
 ---
 
@@ -80,11 +89,19 @@
 
 **現在の実装**（main）: Linux は HTML5 ドラッグのみ（内部 D&D 動作）、Windows/macOS はネイティブ `startDrag` のみ。README に制限を明記。回避策は `npm start -- --ozone-platform=x11`。
 
-**関連ブランチ**: `electron-upgrade`（Electron 44 化 + `webUtils.getPathForFile` + D&D 診断ログ `localStorage.dndDebug=1`）。main 未マージ。Electron 側で Wayland ドラッグが改善された際の検証用。
+**Electron 44 でも同じ**（main に取り込み済み）。Electron / Chromium 側で Wayland の `startDrag` が改善された場合は、`usesNativeDrag()`（`renderer/views-render.js`）で Linux もネイティブに切り替えて再検証する。
 
 ### 2.2 X11 でのアプリ内ドロップ失敗（原因未特定）
 
-`electron-upgrade` ブランチ + `--ozone-platform=x11` で、ネイティブドラッグは外部には渡るが、自ウィンドウへのドロップ（同一ペイン・他ペイン）が動作しない。「`dragover`/`drop` が自ウィンドウに配送されていない」のか「内部状態が先に消えている」のかが未確定。診断ログは仕込み済みだが採取していない。
+Electron 44 + `--ozone-platform=x11` + ネイティブドラッグで、外部にはファイルとして渡るが、自ウィンドウへのドロップ（同一ペイン・他ペイン）が動作しない。「`dragover`/`drop` が自ウィンドウに配送されていない」のか「内部状態が先に消えている」のかが未確定。
+
+現在の main は Linux では HTML5 ドラッグを使うため、この経路は既定では通らない。再調査する場合は `usesNativeDrag()` を Linux でも true にした上で:
+
+```
+PRISM_LOG=debug npm start -- --ozone-platform=x11
+```
+
+で操作し、`prism-fm.log` の `[renderer:dnd]`（dragstart → dragenter → drop → cleanup）と `[ipc] start-drag → Nms` を確認する。
 
 ### 2.3 Windows / macOS のドラッグアウト（未検証）
 
@@ -100,62 +117,69 @@ Electron 公式パターン（`dragstart` + `preventDefault` + `startDrag`）を
 | main.js | `get-directory-contents` でディレクトリへのシンボリックリンクが `isDirectory=false` / Windows の `fs.symlink` に type 未指定 / 外部ドライブの `.Trash-<uid>` 非対応 / `df` フォールバックのシェル補間 / Windows 11 24H2 で `wmic` 廃止 |
 | Undo | 非 Linux でゴミ箱 Undo メニューが出るが必ず失敗 |
 | IPC | `onFileConflict` の解除が `removeAllListeners` / `resolveFileConflict` の引数名が `operationId`（実体は resolveId） |
+| 起動 | 同じディレクトリの `get-directory-contents` が起動時に 3 回呼ばれる（`navigateTo` と `ensurePaneLoaded` の重複。ログで確認） |
 | 保守 | レガシー `copy-item` / `move-item` が未使用のまま残存 / `package.json` の `bugs`・`homepage` と `LICENSES-THIRD-PARTY.md` が削除済みの `compiledkernel-idk/prism-fm` を指す |
+| 検証 | Windows / macOS: Electron 44 でのビルド・起動・ドラッグアウト（`dragstart` + `startDrag`）が未検証 |
 
 ---
 
-## 3. ロギングの現状評価
+## 3. ロギング（実装済み）
 
-**2026-08-29 追記: 下記「推奨する最小構成」を main に実装済み（CHANGELOG Unreleased 参照）。以下は実装前の評価。**
+### 3.1 取得方法
 
-**結論（実装前）: 障害調査に必要なログは取れていない。** 今回の D&D 調査で DevTools のコンソールを毎回手で見てもらう必要があったのはこのため。
+| 方法 | 内容 |
+|---|---|
+| ログファイル | Linux `~/.config/prism-fm/logs/prism-fm.log` / Windows `%APPDATA%\prism-fm\logs\` / macOS `~/Library/Logs/prism-fm/`。5MB で `.1` `.2` にローテーション |
+| レベル | `error / warn / info / debug`。優先順: 環境変数 `PRISM_LOG` > `<userData>/logging.json`（UI から保存）> 既定 `info` |
+| UI | Customize ダイアログのヘッダ: **Open Log Folder** ボタン、**Debug log** トグル（即時反映・永続化） |
+| ターミナル | ファイルと同じ行を `npm start` の標準出力にも出力 |
 
-| 項目 | 現状 | 問題 |
+### 3.2 記録される内容
+
+| 分類 | レベル | 内容 |
 |---|---|---|
-| main プロセスの出力先 | `console.error` のみ（`logCommandFailure` 5 箇所） | ファイルに残らない。`npm start` ではターミナルにも出ない場合がある |
-| レンダラーの出力先 | `console.log/warn/error` 15 箇所 | `--enable-logging`（`npm run dev`）か DevTools でしか見えない |
-| 未捕捉例外 | main: `process.on("uncaughtException")` なし / renderer: `window.onerror`・`unhandledrejection` なし | クラッシュ・非同期エラーが記録されない |
-| プロセス異常終了 | `app.on("render-process-gone")`・`child-process-gone` なし | レンダラー/GPU クラッシュの記録なし |
-| デバッグ用ログ | `[ui] new-folder-btn clicked` 等の開発時ログが本番に残存 | ノイズ。一方で D&D・ファイル操作・ナビゲーションのログは無い |
-| ログレベル | なし | 詳細ログを出す手段がない（`electron-upgrade` の `dndDebug` は暫定） |
-| ログ収集手順 | `npm run dev` のみ | ユーザーに「DevTools を開いて Console をコピー」を依頼する必要がある |
+| 起動 | info | バージョン、Electron/Chromium/Node、OS、Wayland/X11、引数、ログレベル、ログファイルパス |
+| IPC（自動計測） | info: ファイル操作・マウント・端末・キャンセル / debug: その他 | チャネルごとに `←` 引数（長い配列は件数＋先頭 5、`password` 等は redacted）と `→ Nms` 結果（success/error/code/completed/skipped/errors 件数など）。`success:false` は warn、例外は error |
+| ファイル操作内部（`[fileop:<opId>]`） | info/debug | スキャン結果、容量チェック、自己参照の拒否、競合ダイアログの提示と回答、skip、replace 時の既存削除、クロスデバイス移動、項目ごとの所要時間、子エラー、完了サマリ、キャンセル |
+| 削除（`[delete:<opId>]`） | info/warn | 件数、削除できなかったパスと理由 |
+| 操作キュー（`[renderer:ops]`） | info | queued / start / completed / failed / cancelled と所要時間・結果件数、cancel 要求、`onSuccess`/`onError` 内の例外 |
+| Undo | info/debug | push / perform |
+| 競合ダイアログ（`[renderer:conflict]`） | info | 提示（ファイル・dest・opId）と選択（action・applyToAll） |
+| ナビゲーション（`[renderer:nav]`） | debug/warn | `navigateTo` の path・所要時間・件数、stale 応答の破棄、失敗 |
+| D&D（`[renderer:dnd]`） | debug | dragstart（native/HTML5、件数、ペイン）、dragenter、drop（isDragging・draggedItems・files・MIME types）、cleanup の呼び出し元、`drag-ended`、`startDrag` の復帰時間 |
+| ユーザー操作（`[renderer:action]`） | info | paste/drop の判定（受理・拒否件数）、delete、rename、new folder/file |
+| 通知 | debug / warn(error 通知) | 表示したメッセージ |
+| 例外 | error | renderer: `console.error`、`window.onerror`、`unhandledrejection` / main: `uncaughtException`、`unhandledRejection`、`render-process-gone`、`child-process-gone`（理由・exitCode） |
+| 外部コマンド | error | 失敗したコマンドと stderr/stdout |
 
-**推奨する最小構成**:
-1. main に軽量ロガー（`app.getPath("logs")/prism-fm.log`、サイズローテーション、`PRISM_LOG=debug` でレベル切替）
-2. renderer の `console.*` と `window.onerror` / `unhandledrejection` を IPC でロガーに転送
-3. `process.on("uncaughtException" / "unhandledRejection")`、`app.on("render-process-gone" / "child-process-gone")` を記録
-4. ファイル操作（batch-file-operation の開始/終了/エラー）、ナビゲーション、D&D（開始・dragenter・drop・cleanup）に debug ログ
-5. Customize ダイアログに「ログフォルダを開く」ボタン
-6. 開発時の `[ui] ... clicked` ログは削除
+### 3.3 不具合報告の手順
+
+1. Customize → **Debug log** を ON（または `PRISM_LOG=debug npm start`）
+2. 問題を再現
+3. Customize → **Open Log Folder** → `prism-fm.log` を添付
 
 ---
 
 ## 4. 今後の方向性（選択肢）
 
-### A. 現状で確定し、Wayland のドラッグアウトは制限事項とする
-- 作業: なし（README/CHANGELOG 記載済み）
-- 利点: 追加の検証負担なし。内部 D&D・外部からのドロップ・ファイル操作は動作
-- 欠点: Wayland ユーザーは外部へのドラッグアウトができない
+B（ロギング）と C（Electron 44）は実施済み。残る選択肢:
 
-### B. ロギング基盤を整備してから、X11 の内部ドロップ不良を追う
-- 作業: 上記 3 の 1〜6 を実装（1 コミット）→ ユーザーは `PRISM_LOG=debug npm start -- --ozone-platform=x11` で操作 → ログファイルを送るだけ
-- 利点: 今後の障害調査全般が「ログファイルを送る」だけで済む。X11 内部ドロップが直れば「Linux は X11 既定」という選択肢が成立し、ドラッグアウトも内部 D&D も両立
-- 欠点: XWayland では HiDPI のフラクショナルスケーリングでにじみが出る可能性。透過/ぼかしは X11 でも動作するが要確認
+### A. 現状で確定（Wayland のドラッグアウトは制限事項）
+- 作業: なし。README/CHANGELOG に記載済み
+- Wayland ユーザーは外部へのドラッグアウト不可、他は動作
 
-### C. Electron を 44 に更新（`electron-upgrade` を main へ）
-- 作業: ブランチをマージ、electron-builder の対応確認、3 OS でビルド確認
-- 利点: セキュリティ更新、`File.path` 廃止など将来の互換性への対応が済む
-- 欠点: Wayland のドラッグアウトは直らない（確認済み）。ビルド/配布の検証負担
-- 備考: B と組み合わせ可能。A/B とは独立の判断
+### B'. X11 の内部ドロップ不良を追い、「Linux は X11 既定」を検討
+- 作業: §2.2 の手順でログ採取 → 原因修正 → 起動スクリプトで Linux 既定を X11 に（Wayland は明示指定で可）
+- 利点: ドラッグアウトと内部 D&D の両立
+- 懸念: XWayland では HiDPI のフラクショナルスケーリングでにじみ。透過/ぼかしの見え方も要確認
 
 ### D. Electron / Chromium へ upstream 報告
-- 作業: `webContents.startDrag` が Wayland で無視される最小再現を作成して報告
-- 利点: 根本解決の可能性
-- 欠点: 時期不明。既存 issue の有無を要確認
+- `webContents.startDrag` が Wayland で無視される最小再現（素の Electron + `dragstart` → `startDrag`）を作成して報告。既存 issue の確認から
 
 ### E. Low 項目の一括対応
-- 作業: 2.4 のうちパフォーマンス 3 件、`package.json` の URL 修正、レガシー IPC 削除、`cached.ts` 修正（1 コミット）
-- 利点: 小さくリスクも低い
-- 欠点: 体感できる改善は限定的
+- §2.4 のうち: 起動時の 3 重ロード、パフォーマンス 3 件、`cached.ts`、`package.json` の URL、レガシー IPC 削除（1 コミット規模）
 
-**推奨**: **B**（ロギング整備）を先に行う。理由は、今回の調査で「ログが取れない」ことが最大のボトルネックだったこと、および X11 内部ドロップの原因特定にそのまま使えること。B の結果次第で A（Wayland 既定のまま制限明記）か「Linux は X11 既定」かを決め、C と E は任意のタイミングで実施。
+### F. 4.2 リリース
+- main の Unreleased（Wayland 起動修正、サンドボックス、D&D 整理、サブメニュー、Electron 44、ロギング）をまとめて `1.0.0-spumoni.4.2` として tag/push
+
+**推奨**: F を先に行い（Wayland 起動クラッシュとサブメニュー不可はユーザー影響が大きい）、その後 E → 必要に応じて B'。
