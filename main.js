@@ -1880,7 +1880,8 @@ async function compareDragOutCopy(source, candidate, isDir, lastSizes) {
 ipcMain.handle("verify-drag-out", async (event, sourcePaths, options = {}) => {
   const operationId = options.operationId ? String(options.operationId) : null;
   const dlog = log.for(`dragout:${operationId || "-"}`);
-  activeOperationCount++;
+  // Deliberately not counted in activeOperationCount: aborting a
+  // verification (quit) loses nothing.
   try {
     if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
       return { success: false, error: "No paths" };
@@ -1903,7 +1904,10 @@ ipcMain.handle("verify-drag-out", async (event, sourcePaths, options = {}) => {
         if (st.isSymbolicLink()) { notFound.push({ source: src, reason: "symlink" }); continue; }
         pending.push({ src, isDir: st.isDirectory(), base: path.basename(src) });
       } catch (e) {
-        failed.push({ source: src, error: e.message });
+        // Source already gone (moved by an in-app operation meanwhile,
+        // or deleted): nothing to verify, not a failure.
+        if (e?.code === "ENOENT") notFound.push({ source: src, reason: "source no longer exists" });
+        else failed.push({ source: src, error: e.message });
       }
     }
 
@@ -1947,7 +1951,6 @@ ipcMain.handle("verify-drag-out", async (event, sourcePaths, options = {}) => {
     dlog.info(`done: ${moved.length} moved, ${notFound.length} kept, ${failed.length} failed in ${Date.now() - t0}ms`);
     return { success: true, moved, notFound, failed };
   } finally {
-    activeOperationCount = Math.max(0, activeOperationCount - 1);
     if (operationId) cancelOperations.delete(operationId);
   }
 });

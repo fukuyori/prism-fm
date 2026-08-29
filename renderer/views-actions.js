@@ -212,7 +212,16 @@ async function handleFileDrop(
   targetPaneId = activePaneId,
 ) {
   if (sourcePaths.length === 0) return;
-  if (sourcePaneId && typeof lastDragOut !== "undefined" && lastDragOut) lastDragOut.inAppDrop = true;
+  // A drop inside the app (either pane, a folder row, the sidebar) must not
+  // trigger the drag-out move verification. Match by path too: the drag
+  // state may already be gone when a native drag is dropped onto our own
+  // window, in which case the drop arrives as "external files".
+  if (typeof lastDragOut !== "undefined" && lastDragOut) {
+    const set = new Set(lastDragOut.paths.map(normalizePathForCompare));
+    if (sourcePaneId || sourcePaths.every((p) => set.has(normalizePathForCompare(p)))) {
+      lastDragOut.inAppDrop = true;
+    }
+  }
 
   try {
     const { items: batchItems, rejected } = buildTransferItems(sourcePaths, targetDir);
