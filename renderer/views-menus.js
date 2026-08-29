@@ -425,12 +425,12 @@ function renderMenuItems(container, items) {
       });
     } else if (it.submenu) {
       row.addEventListener("mouseenter", () => {
-        openContextSubmenu(it.submenu);
+        openContextSubmenu(it.submenu, row);
       });
       row.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openContextSubmenu(it.submenu);
+        openContextSubmenu(it.submenu, row);
       });
     } else if (typeof it.onClick === "function") {
       row.addEventListener("click", (e) => {
@@ -756,7 +756,7 @@ function buildItemMenuItems() {
   return itemMenu;
 }
 
-function openContextSubmenu(subItems) {
+function openContextSubmenu(subItems, anchorRow) {
   if (!contextSubmenu) return;
   contextSubmenuOpen = true;
   contextSubmenu.style.display = "block";
@@ -771,6 +771,18 @@ function openContextSubmenu(subItems) {
   if (absoluteLeft > window.innerWidth - 10) {
     contextSubmenu.style.left = `${-subRect.width + 8}px`;
   }
+
+  // Align the submenu's first item with the row that opened it (both have
+  // 8px top padding), clamped so it stays on screen.
+  let top = 8;
+  if (anchorRow) {
+    const rowRect = anchorRow.getBoundingClientRect();
+    top = rowRect.top - mainRect.top - 8;
+    const overflow = mainRect.top + top + subRect.height - (window.innerHeight - 10);
+    if (overflow > 0) top -= overflow;
+    if (mainRect.top + top < 10) top = 10 - mainRect.top;
+  }
+  contextSubmenu.style.top = `${Math.round(top)}px`;
 }
 
 function renderContextMenu() {
