@@ -65,13 +65,19 @@ function setupSidebarToggle() {
   // progress and must NOT clear the drag state (that made every
   // pane-to-pane drop on Linux fall into the "external files" branch with
   // an empty list, i.e. do nothing).
-  // Linux uses an HTML5 drag session (see setupDragHandlers) and never
-  // calls startDrag, so this message only arrives on Windows/macOS.
+  // "drag-ended" is sent when webContents.startDrag returns: at the end of
+  // the drag on Windows/macOS, but immediately on Linux where startDrag is
+  // asynchronous — there it must not clear the state of a drag that is
+  // still in progress. Linux relies on the drop handlers and the
+  // mousemove/Escape fallbacks below instead.
+  const isLinux = window.fileManager.platform === "linux";
   window.fileManager.onDragEnded(() => {
+    if (isLinux) return;
     setTimeout(() => {
       if (isDragging) cleanupDragState();
     }, 100);
   });
+  if (typeof setupNativeDragDetection === "function") setupNativeDragDetection();
 
   // Fallback end-of-drag detection for every platform: once the pointer
   // moves over our window with no button held, the drag is over (it was
