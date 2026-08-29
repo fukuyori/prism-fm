@@ -14,6 +14,14 @@ A lightweight, transparent file manager for Linux, Windows, and macOS utilizing 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
+### v1.0.0-spumoni.4.2
+
+- Drag & drop rebuilt on the native OS drag on every platform: files reach other apps as real files (Wayland included), and in-app drops of the same drag work again
+- Move on drag-out: after a plain drag to another app, the copy the target made is verified (size + SHA-256) and the original goes to the trash; Ctrl/Option-drag copies; toggle in Customize
+- Fixed: crash on launch under Wayland (since 3.5), `npm start` sandbox abort on Ubuntu 24.04+, context submenu (New ▸) never appearing (since 3.6)
+- Electron 28 → 44
+- File logging with rotation (`~/.config/prism-fm/logs/prism-fm.log`), Debug log toggle and Open Log Folder in Customize; file operations, drag & drop, navigation and errors are recorded
+
 ### v1.0.0-spumoni.4.1
 
 - Split view: Back/Forward rendered the previous directory; stale async responses no longer overwrite panes, tabs, preview or drive list
