@@ -117,6 +117,7 @@ Electron 公式パターン（`dragstart` + `preventDefault` + `startDrag`）を
 | main.js | `get-directory-contents` でディレクトリへのシンボリックリンクが `isDirectory=false` / Windows の `fs.symlink` に type 未指定 / 外部ドライブの `.Trash-<uid>` 非対応 / `df` フォールバックのシェル補間 / Windows 11 24H2 で `wmic` 廃止 |
 | Undo | 非 Linux でゴミ箱 Undo メニューが出るが必ず失敗 |
 | IPC | `onFileConflict` の解除が `removeAllListeners` / `resolveFileConflict` の引数名が `operationId`（実体は resolveId） |
+| 表示更新 | ディレクトリ監視（`fs.watch` / chokidar）が無く、外部で行われた変更（他アプリでの移動・削除・作成、X11 でのドラッグアウト後の移動など）が Ctrl+R か次のナビゲーションまで反映されない。表示中のペインのディレクトリのみ監視し、デバウンス付きで `refreshPanesShowing()` を呼ぶ形が候補 |
 | 起動 | 同じディレクトリの `get-directory-contents` が起動時に 3 回呼ばれる（`navigateTo` と `ensurePaneLoaded` の重複。ログで確認） |
 | 保守 | レガシー `copy-item` / `move-item` が未使用のまま残存 / `package.json` の `bugs`・`homepage` と `LICENSES-THIRD-PARTY.md` が削除済みの `compiledkernel-idk/prism-fm` を指す |
 | 検証 | Windows / macOS: Electron 44 でのビルド・起動・ドラッグアウト（`dragstart` + `startDrag`）が未検証 |
