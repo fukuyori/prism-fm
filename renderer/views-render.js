@@ -374,6 +374,7 @@ function setupDragHandlers(element, item) {
 
   element.addEventListener("dragstart", (e) => {
     beginDragState(element, item);
+    rlog.debug("dnd", "dragstart", { native: usesNativeDrag(), count: draggedItems.length, first: draggedItems.slice(0, 3), pane: dragSourcePaneId });
 
     if (usesNativeDrag()) {
       e.preventDefault();
@@ -409,6 +410,7 @@ function getDroppedPaths(e) {
 }
 
 function cleanupDragState() {
+  if (isDragging) rlog.debug("dnd", "cleanupDragState", { from: new Error().stack?.split("\n")[2]?.trim() });
   isDragging = false;
   draggedItems = [];
   dragSourcePaneId = null;
@@ -453,6 +455,7 @@ function setupFolderDropHandlers(element, item) {
 
   element.addEventListener("drop", async (e) => {
     e.preventDefault();
+    rlog.debug("dnd", "drop on folder row", { target: item.path, isDragging, dragged: draggedItems.length, files: getDroppedPaths(e).length, types: Array.from(e.dataTransfer.types || []) });
     element.classList.remove("drop-target");
     if (folderHoverTimer) {
       clearTimeout(folderHoverTimer);
@@ -1140,6 +1143,7 @@ async function refreshPane(paneId) {
 // the user has since clicked into the other pane, and so two panes showing
 // the same directory don't disagree.
 async function refreshPanesShowing(dirPaths) {
+  rlog.debug("nav", "refreshPanesShowing", { dirs: dirPaths });
   // localParsePath("/a").dir is "" for a root-level entry; treat as "/".
   const wanted = new Set(
     (dirPaths || [])
@@ -1281,6 +1285,7 @@ function showNextNotification() {
 }
 
 function showNotification(message, type = "info") {
+  rlog[type === "error" ? "warn" : "debug"]("notify", message);
   notificationQueue.push({ message, type });
   showNextNotification();
 }

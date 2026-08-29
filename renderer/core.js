@@ -47,6 +47,62 @@ var operationHistory = [];
 var operationSequence = 0;
 var queuePaused = false;
 var OPERATION_HISTORY_LIMIT = 50;
+// ---------------------------------------------------------------- logging
+// rlog.<level>(source, message, data) → main-process file logger. Data must
+// be structured-cloneable; toLoggable() converts Sets/Errors/DOM nodes.
+function toLoggable(value, depth = 0) {
+  if (value === null || value === undefined) return value;
+  if (depth > 4) return "…";
+  if (value instanceof Error) return { message: value.message, stack: value.stack };
+  if (value instanceof Set || value instanceof Map) return Array.from(value).slice(0, 50).map((v) => toLoggable(v, depth + 1));
+  if (typeof Node !== "undefined" && value instanceof Node) return `<${value.nodeName.toLowerCase()}${value.id ? "#" + value.id : ""}>`;
+  if (Array.isArray(value)) {
+    return value.length > 50
+      ? { count: value.length, first: value.slice(0, 10).map((v) => toLoggable(v, depth + 1)) }
+      : value.map((v) => toLoggable(v, depth + 1));
+  }
+  if (typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (typeof v === "function") continue;
+      out[k] = toLoggable(v, depth + 1);
+    }
+    return out;
+  }
+  if (typeof value === "function") return undefined;
+  return value;
+}
+
+function rlogSend(level, source, message, data) {
+  try {
+    window.fileManager?.log?.(level, source, String(message), data === undefined ? undefined : toLoggable(data));
+  } catch { }
+}
+
+var rlog = {
+  error: (source, message, data) => rlogSend("error", source, message, data),
+  warn: (source, message, data) => rlogSend("warn", source, message, data),
+  info: (source, message, data) => rlogSend("info", source, message, data),
+  debug: (source, message, data) => rlogSend("debug", source, message, data),
+};
+
+// Mirror console output and uncaught errors to the file log. Originals are
+// kept so DevTools still shows everything.
+(function installRendererLogHooks() {
+  const orig = { log: console.log, warn: console.warn, error: console.error };
+  const fmt = (args) => args.map((a) => (typeof a === "string" ? a : (() => { try { return JSON.stringify(toLoggable(a)); } catch { return String(a); } })())).join(" ");
+  console.log = (...args) => { orig.log.apply(console, args); rlogSend("debug", "console", fmt(args)); };
+  console.warn = (...args) => { orig.warn.apply(console, args); rlogSend("warn", "console", fmt(args)); };
+  console.error = (...args) => { orig.error.apply(console, args); rlogSend("error", "console", fmt(args)); };
+  window.addEventListener("error", (e) => {
+    rlogSend("error", "window", "uncaught error", { message: e.message, file: e.filename, line: e.lineno, col: e.colno, stack: e.error?.stack });
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    rlogSend("error", "window", "unhandled rejection", toLoggable(e.reason));
+  });
+})();
+// -------------------------------------------------------------- /logging
+
 var undoStack = [];
 var UNDO_STACK_LIMIT = 20;
 var isInTrash = false;
@@ -470,6 +526,7 @@ function setupOperationsPanel() {
 // operations are simply removed from the queue.
 async function cancelQueuedOperation(op) {
   if (!op) return;
+  rlog.info("ops", `cancel requested ${op.id} (${op.status})`, { label: op.label });
   if (op.status === "queued") {
     const idx = operationQueue.indexOf(op);
     if (idx >= 0) operationQueue.splice(idx, 1);
@@ -662,6 +719,46 @@ function clearThumbnailObserver() {
   }
 }
 
+// "Open Log Folder" button and "Debug log" toggle in the Customize header.
+function setupLogControls() {
+  const titleEl = document.querySelector(".theme-modal-title");
+  if (!titleEl || !window.fileManager?.getLogInfo) return;
+  let box = document.getElementById("log-controls");
+  if (!box) {
+    box = document.createElement("span");
+    box.id = "log-controls";
+    box.style.cssText = "display:inline-flex; align-items:center; gap:8px; margin-left:12px; font-size:12px; font-weight:400;";
+    const openBtn = document.createElement("button");
+    openBtn.className = "ops-item-btn";
+    openBtn.textContent = "Open Log Folder";
+    openBtn.title = "Open the folder containing prism-fm.log";
+    openBtn.addEventListener("click", async () => {
+      const r = await window.fileManager.openLogFolder();
+      if (!r?.success) showNotification(r?.error || "Could not open log folder", "error");
+    });
+    const label = document.createElement("label");
+    label.style.cssText = "display:inline-flex; align-items:center; gap:4px; cursor:pointer; color:var(--text-muted);";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.id = "log-debug-toggle";
+    cb.addEventListener("change", async () => {
+      const level = cb.checked ? "debug" : "info";
+      const r = await window.fileManager.setLogLevel(level);
+      showNotification(r?.success ? `Log level: ${level}` : (r?.error || "Could not change log level"), r?.success ? "info" : "error");
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode("Debug log"));
+    box.appendChild(openBtn);
+    box.appendChild(label);
+    titleEl.appendChild(box);
+  }
+  window.fileManager.getLogInfo().then((info) => {
+    const cb = document.getElementById("log-debug-toggle");
+    if (cb) cb.checked = info?.level === "debug";
+    box.title = info?.file ? `Log file: ${info.file}` : "";
+  }).catch(() => { });
+}
+
 function openThemeCustomizer() {
   themeModal = document.getElementById("theme-modal");
   if (themeModal) {
@@ -671,6 +768,7 @@ function openThemeCustomizer() {
         versionEl.textContent = "v" + v;
       }).catch(() => {});
     }
+    setupLogControls();
     themeSavedOverridesSnapshot = { ...themeOverrides };
     themeDraftOverrides = { ...themeOverrides };
     themeModal.classList.add("visible");
@@ -1710,7 +1808,9 @@ function showDeleteChoiceModal(title, message) {
 function initFileConflictHandler() {
   if (!window.fileManager.onFileConflict) return;
   window.fileManager.onFileConflict((data) => {
+    rlog.info("conflict", "prompt shown", { file: data.fileName, dest: data.destPath, operationId: data.operationId });
     showFileConflictModal(data.fileName).then((result) => {
+      rlog.info("conflict", `user chose ${result.action}`, { applyToAll: Boolean(result.applyToAll), file: data.fileName });
       window.fileManager.resolveFileConflict({
         operationId: data.resolveId,
         action: result.action,
@@ -1965,6 +2065,7 @@ function enqueueOperation(entry) {
     ...entry,
   };
   operationQueue.push(op);
+  rlog.info("ops", `queued ${op.id}: ${op.label}`, { queueLength: operationQueue.length, running: activeOperation?.id || null });
   scheduleOpsRender();
   processOperationQueue();
   return op;
@@ -1980,17 +2081,26 @@ async function processOperationQueue() {
   activeOperation = op;
   op.status = "running";
   op.startedAt = Date.now();
+  rlog.info("ops", `start ${op.id}: ${op.label}`);
   if (op.usesProgress) startProgress();
   scheduleOpsRender();
   try {
     const result = await op.run(op);
     op.status = result?.cancelled ? "cancelled" : "completed";
-    if (op.status === "completed" && op.onSuccess) await op.onSuccess(result);
+    rlog.info("ops", `${op.status} ${op.id} in ${Date.now() - op.startedAt}ms`, { completed: result?.completed, skipped: result?.skipped, errors: result?.errors?.length, deleted: result?.deleted });
+    if (op.status === "completed" && op.onSuccess) {
+      try {
+        await op.onSuccess(result);
+      } catch (successErr) {
+        rlog.error("ops", `onSuccess threw for ${op.id}`, successErr);
+      }
+    }
   } catch (err) {
     op.status = err?.cancelled ? "cancelled" : "failed";
     op.error = err?.message;
+    rlog[op.status === "failed" ? "warn" : "info"]("ops", `${op.status} ${op.id} after ${Date.now() - op.startedAt}ms`, err);
     if (op.onError) {
-      try { await op.onError(err); } catch { }
+      try { await op.onError(err); } catch (onErrErr) { rlog.error("ops", `onError threw for ${op.id}`, onErrErr); }
     }
   } finally {
     op.finishedAt = Date.now();
@@ -2010,6 +2120,7 @@ async function performUndo() {
     showNotification("Nothing to undo");
     return;
   }
+  rlog.info("undo", `perform: ${entry.label}`, { remaining: undoStack.length });
   enqueueOperation({
     label: entry.label || "Undo",
     usesProgress: Boolean(entry.usesProgress),
@@ -2030,6 +2141,7 @@ async function performUndo() {
 
 function pushUndo(entry) {
   if (!entry || typeof entry.undo !== "function") return;
+  rlog.debug("undo", `push: ${entry.label}`);
   undoStack.push(entry);
   if (undoStack.length > UNDO_STACK_LIMIT) undoStack.shift();
   if (typeof refreshUndoMenu === "function") refreshUndoMenu();

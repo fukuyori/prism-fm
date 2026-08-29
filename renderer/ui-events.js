@@ -71,6 +71,7 @@ function setupSidebarToggle() {
   // still in progress. Linux relies on the drop handlers and the
   // mousemove/Escape fallbacks below instead.
   window.fileManager.onDragEnded(() => {
+    rlog.debug("dnd", "drag-ended from main", { isDragging });
     setTimeout(() => {
       if (isDragging) cleanupDragState();
     }, 100);
@@ -81,7 +82,10 @@ function setupSidebarToggle() {
   // dropped elsewhere or cancelled). Drops inside the app clean up in
   // their own handlers.
   document.addEventListener("mousemove", (e) => {
-    if (isDragging && e.buttons === 0) cleanupDragState();
+    if (isDragging && e.buttons === 0) {
+      rlog.debug("dnd", "pointer moved with no button while dragging → cleanup");
+      cleanupDragState();
+    }
   });
   document.addEventListener("keydown", (e) => {
     if (isDragging && e.key === "Escape") cleanupDragState();
@@ -141,7 +145,7 @@ function setupGroupSelect() {
 function setupToolbarButtons() {
   if (newFolderBtn) {
     newFolderBtn.addEventListener("click", (e) => {
-      console.log("[ui] new-folder-btn clicked");
+      rlog.debug("ui", "new-folder-btn clicked");
       e.preventDefault();
       e.stopPropagation();
       createNewFolder();
@@ -150,7 +154,7 @@ function setupToolbarButtons() {
 
   if (newFileBtn) {
     newFileBtn.addEventListener("click", (e) => {
-      console.log("[ui] new-file-btn clicked");
+      rlog.debug("ui", "new-file-btn clicked");
       e.preventDefault();
       e.stopPropagation();
       createNewFile();
@@ -159,7 +163,7 @@ function setupToolbarButtons() {
 
   if (emptyTrashBtn) {
     emptyTrashBtn.addEventListener("click", async (e) => {
-      console.log("[ui] empty-trash-btn clicked");
+      rlog.debug("ui", "empty-trash-btn clicked");
       e.preventDefault();
       e.stopPropagation();
       await emptyTrash();
@@ -372,6 +376,9 @@ function setupFileListHandlers() {
       }
     });
 
+    listEl.addEventListener("dragenter", (e) => {
+      rlog.debug("dnd", "dragenter list", { pane: paneId, isDragging, dragged: draggedItems.length, types: Array.from(e.dataTransfer.types || []) });
+    });
     listEl.addEventListener("dragover", (e) => {
       // Refuse the drop when the row under the cursor is one of the dragged
       // items (or inside one). Without this the folder row's own dragover
@@ -444,6 +451,7 @@ function setupFileListHandlers() {
       }
 
       const targetFolder = e.target.closest(".file-item");
+      rlog.debug("dnd", "drop on list", { pane: paneId, isDragging, dragged: draggedItems.length, files: getDroppedPaths(e).length, types: Array.from(e.dataTransfer.types || []), onFolderRow: targetFolder?.dataset.isDirectory === "true" });
       if (targetFolder?.dataset.isDirectory === "true") return;
 
       if (isDragging && draggedItems.length > 0) {

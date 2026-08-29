@@ -84,6 +84,13 @@ const fileManagerApi = {
     } catch { }
     return file?.path || "";
   },
+  // Logging: forwarded to the main-process file logger.
+  log: (level, source, message, data) => {
+    try { ipcRenderer.send("log-event", level, source, message, data); } catch { }
+  },
+  getLogInfo: invoke("get-log-info"),
+  setLogLevel: invoke("set-log-level"),
+  openLogFolder: invoke("open-log-folder"),
   platform: process.platform,
   appVersion: invoke("get-app-version"),
 };

@@ -14,6 +14,8 @@ function isNavigationStale(token) {
 
 async function navigateTo(path) {
   const nav = beginNavigation();
+  const navStart = Date.now();
+  rlog.debug("nav", `navigateTo ${path}`, { pane: nav.paneId, seq: nav.seq });
 
   if (path.startsWith("tag://")) {
     const color = path.replace("tag://", "");
@@ -60,7 +62,11 @@ async function navigateTo(path) {
 
   try {
     const result = await window.fileManager.getDirectoryContents(path);
-    if (isNavigationStale(nav)) return;
+    if (isNavigationStale(nav)) {
+      rlog.debug("nav", `stale response discarded for ${path}`, { seq: nav.seq, now: navigationSeq });
+      return;
+    }
+    rlog.debug("nav", `loaded ${path} in ${Date.now() - navStart}ms`, { success: result.success, items: result.contents?.length, error: result.error });
 
     if (result.success) {
       currentPath = result.path;
@@ -115,9 +121,11 @@ async function navigateTo(path) {
       syncQuickAccessHighlight();
       scheduleVisibleFolderSizes();
     } else {
+      rlog.warn("nav", `failed to open ${path}`, { error: result.error });
       showNotification("Error: " + result.error, "error");
     }
   } catch (error) {
+    rlog.error("nav", `navigateTo threw for ${path}`, error);
     showNotification("Error: " + error.message, "error");
   }
 }

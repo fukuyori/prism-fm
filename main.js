@@ -50,13 +50,245 @@ let mainWindow;
 const cancelOperations = new Set();
 let activeOperationCount = 0;
 
+// ============================================================ logging
+// File logger with rotation, mirrored to the terminal. Level from
+// PRISM_LOG env (error|warn|info|debug), else <userData>/logging.json
+// (set from the Customize dialog), else "info". Renderer processes forward
+// their console/errors through the "log-event" IPC. IPC handlers are
+// auto-instrumented (see instrumentIpcHandlers) so every file operation is
+// recorded with arguments, duration and outcome without touching each one.
+const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+const LOG_GENERATIONS = 3;
+const LOG_DATA_MAX_CHARS = 4000;
+let logLevel = "info";
+let logDir = null;
+let logFile = null;
+let logFd = null;
+let logBytes = 0;
+const logEarlyBuffer = [];
+
+function logSettingsPath() {
+  return path.join(app.getPath("userData"), "logging.json");
+}
+
+function loadLogLevel() {
+  const env = String(process.env.PRISM_LOG || "").toLowerCase();
+  if (env in LOG_LEVELS) return env;
+  try {
+    const cfg = JSON.parse(fsSync.readFileSync(logSettingsPath(), "utf8"));
+    if (cfg && cfg.level in LOG_LEVELS) return cfg.level;
+  } catch { }
+  return "info";
+}
+
+function saveLogLevel(level) {
+  try {
+    fsSync.mkdirSync(path.dirname(logSettingsPath()), { recursive: true });
+    fsSync.writeFileSync(logSettingsPath(), JSON.stringify({ level }, null, 2));
+  } catch (e) {
+    writeLog("warn", "log", "could not save log level", errInfo(e));
+  }
+}
+
+function logTimestamp() {
+  const d = new Date();
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ` +
+    `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, "0")}`;
+}
+
+function errInfo(e) {
+  if (!e) return undefined;
+  if (typeof e !== "object") return { message: String(e) };
+  return { message: e.message, code: e.code, stack: e.stack };
+}
+
+// Bounded, secret-free JSON for the data column.
+function serializeLogData(data) {
+  if (data === undefined) return "";
+  const seen = new WeakSet();
+  const replacer = (key, value) => {
+    if (/pass(word)?|secret|token/i.test(key)) return "<redacted>";
+    if (value instanceof Error) return errInfo(value);
+    if (value instanceof Set || value instanceof Map) return Array.from(value);
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) return "<circular>";
+      seen.add(value);
+    }
+    return value;
+  };
+  let str;
+  try { str = JSON.stringify(data, replacer); } catch { str = String(data); }
+  if (str && str.length > LOG_DATA_MAX_CHARS) str = str.slice(0, LOG_DATA_MAX_CHARS) + "…(truncated)";
+  return str;
+}
+
+function rotateLogIfNeeded() {
+  if (logBytes < LOG_MAX_BYTES || !logFile) return;
+  try {
+    if (logFd !== null) { fsSync.closeSync(logFd); logFd = null; }
+    for (let i = LOG_GENERATIONS - 1; i >= 1; i--) {
+      const from = i === 1 ? logFile : `${logFile}.${i - 1}`;
+      const to = `${logFile}.${i}`;
+      try { fsSync.renameSync(from, to); } catch { }
+    }
+    logFd = fsSync.openSync(logFile, "a");
+    logBytes = 0;
+  } catch { }
+}
+
+function writeLog(level, source, message, data) {
+  if ((LOG_LEVELS[level] ?? 2) > LOG_LEVELS[logLevel]) return;
+  const dataStr = serializeLogData(data);
+  const line = `${logTimestamp()} [${level.toUpperCase().padEnd(5)}] [${source}] ${message}${dataStr ? " " + dataStr : ""}`;
+  const out = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+  out(line);
+  if (logFd === null) {
+    if (logEarlyBuffer.length < 500) logEarlyBuffer.push(line);
+    return;
+  }
+  try {
+    const buf = line + "\n";
+    fsSync.writeSync(logFd, buf);
+    logBytes += Buffer.byteLength(buf);
+    rotateLogIfNeeded();
+  } catch { }
+}
+
+const log = {
+  error: (m, d) => writeLog("error", "main", m, d),
+  warn: (m, d) => writeLog("warn", "main", m, d),
+  info: (m, d) => writeLog("info", "main", m, d),
+  debug: (m, d) => writeLog("debug", "main", m, d),
+  for: (source) => ({
+    error: (m, d) => writeLog("error", source, m, d),
+    warn: (m, d) => writeLog("warn", source, m, d),
+    info: (m, d) => writeLog("info", source, m, d),
+    debug: (m, d) => writeLog("debug", source, m, d),
+  }),
+};
+
+function initLogger() {
+  logLevel = loadLogLevel();
+  try {
+    logDir = app.getPath("logs");
+    fsSync.mkdirSync(logDir, { recursive: true });
+    logFile = path.join(logDir, "prism-fm.log");
+    logFd = fsSync.openSync(logFile, "a");
+    try { logBytes = fsSync.statSync(logFile).size; } catch { logBytes = 0; }
+    for (const line of logEarlyBuffer) {
+      const buf = line + "\n";
+      fsSync.writeSync(logFd, buf);
+      logBytes += Buffer.byteLength(buf);
+    }
+    logEarlyBuffer.length = 0;
+  } catch (e) {
+    console.error("log file unavailable:", e?.message);
+  }
+  log.info("==== prism-fm start", {
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: `${process.platform} ${os.release()} ${process.arch}`,
+    session: process.platform === "linux" ? (isWaylandSession() ? "wayland" : "x11") : undefined,
+    argv: process.argv.slice(1),
+    logLevel,
+    logFile,
+  });
+}
+
+process.on("uncaughtException", (e) => {
+  writeLog("error", "main", "uncaughtException", errInfo(e));
+});
+process.on("unhandledRejection", (reason) => {
+  writeLog("error", "main", "unhandledRejection", errInfo(reason));
+});
+app.on("render-process-gone", (event, webContents, details) => {
+  writeLog("error", "main", "render-process-gone", { reason: details.reason, exitCode: details.exitCode, url: webContents?.getURL?.() });
+});
+app.on("child-process-gone", (event, details) => {
+  writeLog("error", "main", "child-process-gone", details);
+});
+
+ipcMain.on("log-event", (event, level, source, message, data) => {
+  const lvl = level in LOG_LEVELS ? level : "info";
+  writeLog(lvl, `renderer:${String(source || "?").slice(0, 24)}`, String(message ?? ""), data);
+});
+ipcMain.handle("get-log-info", () => ({ dir: logDir, file: logFile, level: logLevel }));
+ipcMain.handle("set-log-level", (event, level) => {
+  if (!(level in LOG_LEVELS)) return { success: false, error: "invalid level" };
+  logLevel = level;
+  saveLogLevel(level);
+  log.info(`log level set to ${level}`);
+  return { success: true, level };
+});
+ipcMain.handle("open-log-folder", async () => {
+  if (!logDir) return { success: false, error: "no log dir" };
+  const err = await shell.openPath(logDir);
+  return err ? { success: false, error: err } : { success: true };
+});
+
+// Auto-instrument ipcMain.handle: file operations at info level, the rest
+// at debug. Arguments are summarised (long arrays shortened, secrets
+// redacted) and results reduced to their outcome fields.
+const IPC_INFO_CHANNELS = new Set([
+  "batch-file-operation", "batch-delete", "delete-item", "delete-item-sudo",
+  "trash-item", "empty-recycle-bin", "restore-trash-items", "rename-item",
+  "create-folder", "create-file", "copy-item", "move-item", "extract-archive",
+  "compress-items", "mount-device", "unmount-device", "eject-device",
+  "cancel-operation", "open-file", "open-terminal", "open-terminal-custom",
+  "show-in-folder", "set-log-level",
+]);
+const IPC_SILENT_CHANNELS = new Set(["log-event", "get-log-info"]);
+
+function summarizeIpcArg(v) {
+  if (Array.isArray(v)) {
+    return v.length > 10 ? { count: v.length, first: v.slice(0, 5) } : v;
+  }
+  return v;
+}
+
+function summarizeIpcResult(r) {
+  if (!r || typeof r !== "object") return r;
+  const out = {};
+  for (const k of ["success", "error", "code", "cancelled", "completed", "skipped", "deleted", "partial", "newPath", "path", "outputDir", "outputPath", "restored", "failed", "needsAuth", "mounted"]) {
+    if (k in r) out[k] = r[k];
+  }
+  if (Array.isArray(r.errors)) out.errors = r.errors.length > 10 ? { count: r.errors.length, first: r.errors.slice(0, 5) } : r.errors;
+  if (Array.isArray(r.contents)) out.contents = r.contents.length;
+  if (Array.isArray(r.completedItems)) out.completedItems = r.completedItems.length;
+  return out;
+}
+
+function instrumentIpcHandlers() {
+  const originalHandle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = (channel, handler) => originalHandle(channel, async (event, ...args) => {
+    if (IPC_SILENT_CHANNELS.has(channel)) return handler(event, ...args);
+    const level = IPC_INFO_CHANNELS.has(channel) ? "info" : "debug";
+    const t0 = Date.now();
+    writeLog(level, "ipc", `${channel} ←`, args.length ? args.map(summarizeIpcArg) : undefined);
+    try {
+      const result = await handler(event, ...args);
+      const failed = result && typeof result === "object" && result.success === false;
+      writeLog(failed ? "warn" : level, "ipc", `${channel} → ${Date.now() - t0}ms`, summarizeIpcResult(result));
+      return result;
+    } catch (e) {
+      writeLog("error", "ipc", `${channel} threw after ${Date.now() - t0}ms`, errInfo(e));
+      throw e;
+    }
+  });
+}
+instrumentIpcHandlers();
+// ========================================================== /logging
+
 function logCommandFailure(command, error) {
   if (!command) return;
   const message = error?.message || String(error || "");
   const stderr = error?.stderr || "";
   const stdout = error?.stdout || "";
-  const detail = [message, stderr, stdout].filter(Boolean).join("\n");
-  console.error(`[command failed] ${command}\n${detail}`);
+  writeLog("error", "cmd", `command failed: ${command}`, { message, stderr, stdout });
 }
 
 
@@ -368,6 +600,7 @@ function createWindow() {
   mainWindow.on("close", (e) => {
     if (forceQuit) return;
     if (cancelOperations.size > 0 || activeOperationCount > 0) {
+      log.info("close requested during active operation", { activeOperationCount });
       e.preventDefault();
       confirmQuitDuringOperation().then((quit) => {
         if (quit) {
@@ -490,6 +723,7 @@ async function generateThumbnail(filePath) {
 }
 
 app.whenReady().then(() => {
+  initLogger();
   protocol.handle("thumb", async (request) => {
     const filePath = decodeURIComponent(request.url.replace(/^thumb:\/\//, ""));
 
@@ -540,6 +774,7 @@ async function confirmQuitDuringOperation() {
 }
 
 app.on("before-quit", (e) => {
+  log.info("before-quit", { forceQuit, activeOperationCount });
   if (forceQuit) return;
   if (mainWindow && !mainWindow.isDestroyed() &&
       (cancelOperations.size > 0 || activeOperationCount > 0)) {
@@ -1031,6 +1266,8 @@ ipcMain.handle("batch-delete", async (event, itemPaths, operationId) => {
     event.sender.send("file-operation-progress", percent);
   };
 
+  log.for(`delete:${operationId || "-"}`).info(`deleting ${itemPaths.length} item(s), ${totalFiles} file(s)`);
+
   const deleteRecursive = async (p) => {
     if (shouldCancel()) {
       throw Object.assign(new Error("Operation cancelled"), { code: "CANCELLED" });
@@ -1056,6 +1293,7 @@ ipcMain.handle("batch-delete", async (event, itemPaths, operationId) => {
         deletedFiles++;
         reportProgress();
       } catch (rmErr) {
+        log.for(`delete:${operationId || "-"}`).warn("could not delete", { path: p, ...errInfo(rmErr) });
         errors.push({ path: p, error: rmErr.message });
       }
     }
@@ -1518,9 +1756,12 @@ ipcMain.on("start-drag", (event, filePaths) => {
   try {
     // Synchronous until the drag ends on Windows/macOS; returns at once
     // on Linux (the renderer accounts for that).
+    log.debug("startDrag", { count: filePaths.length, first: filePaths.slice(0, 3) });
+    const t0 = Date.now();
     event.sender.startDrag({ files: filePaths, icon });
+    log.debug(`startDrag returned after ${Date.now() - t0}ms`);
   } catch (error) {
-    console.warn("startDrag failed:", error?.message || error);
+    log.warn("startDrag failed", errInfo(error));
   }
   if (!event.sender.isDestroyed()) event.sender.send("drag-ended");
 });
@@ -1553,6 +1794,7 @@ ipcMain.on("resolve-file-conflict", (event, resolution) => {
 function cancelPendingConflicts(operationId) {
   for (const [key, entry] of conflictResolvers) {
     if (operationId === undefined || String(entry.operationId) === String(operationId)) {
+      log.info("conflict prompt auto-cancelled", { operationId: entry.operationId });
       conflictResolvers.delete(key);
       entry.resolve({ action: "cancel" });
     }
@@ -1586,6 +1828,7 @@ function askConflictResolution(sender, fileName, destPath, operationId) {
 
 ipcMain.handle("batch-file-operation", async (event, items, operation, operationId) => {
   activeOperationCount++;
+  const oplog = log.for(`fileop:${operationId || "-"}`);
   const cancelKey = operationId ? String(operationId) : null;
   const shouldCancel = () =>
     Boolean(cancelKey && cancelOperations.has(cancelKey));
@@ -1625,9 +1868,11 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
     } catch { }
   };
 
+  const scanStart = Date.now();
   for (const item of items) {
     await scan(item.source, item.source);
   }
+  oplog.info(`${operation} ${items.length} item(s): scanned ${totalFiles} file(s), ${formatBytesCompact(totalBytes)} in ${Date.now() - scanStart}ms`);
 
   // Disk space check. A move within one device is a rename and needs no
   // free space, so for moves only count items whose source lives on a
@@ -1649,7 +1894,9 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
         }
       }
       const space = await getDiskSpace(destDir);
+      oplog.debug("disk space check", { destDir, bytesNeeded, free: space?.free });
       if (space && space.free > 0 && bytesNeeded > space.free) {
+        oplog.warn("insufficient disk space", { bytesNeeded, free: space.free });
         const needed = formatBytesCompact(bytesNeeded);
         const available = formatBytesCompact(space.free);
         return {
@@ -1822,12 +2069,14 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
       return await findUniquePath(item.dest, isDir ? "directory" : "file");
     }
 
+    oplog.info("conflict: asking user", { dest: item.dest });
     const resolution = await askConflictResolution(
       event.sender,
       path.basename(item.dest),
       item.dest,
       operationId,
     );
+    oplog.info("conflict: resolved", { dest: item.dest, action: resolution.action, applyToAll: Boolean(resolution.applyToAll) });
 
     if (resolution.applyToAll) {
       applyToAll = resolution.action;
@@ -1877,6 +2126,7 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
       }
 
       if (isSelfOrDescendant(item.source, item.dest)) {
+        oplog.warn("refused: destination inside source", { source: item.source, dest: item.dest });
         errors.push({
           path: item.source,
           error: `Cannot ${operation} "${path.basename(item.source)}" into itself`,
@@ -1895,6 +2145,7 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
 
       const finalDest = await resolveConflict(item);
       if (finalDest === null) {
+        oplog.info("skipped", { source: item.source, dest: item.dest });
         skippedItems++;
         const size = itemSizes.get(item.source) || 0;
         processedBytes += size;
@@ -1906,8 +2157,11 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
       const replaced = destExisted && finalDest === item.dest;
 
       subErrors = [];
+      const itemStart = Date.now();
+      oplog.debug(`${operation} item`, { source: item.source, dest: finalDest, replaced, destExisted });
       try {
         if (replaced) {
+          oplog.info("replace: removing existing destination", { dest: finalDest });
           // "Replace" must actually replace: without this a directory copy
           // merges into the existing one (leaving stale files), a move onto a
           // non-empty directory fails with ENOTEMPTY, and a symlink at dest
@@ -1932,6 +2186,7 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
             // would otherwise produce a duplicate whose source can't be
             // removed, reported as an rm error.
             if (renameErr?.code !== "EXDEV") throw renameErr;
+            oplog.info("cross-device move: copy + verify + delete", { source: item.source });
 
             // Cross-device move: copy then verify before deleting source
             await copyRecursive(item.source, finalDest);
@@ -1964,9 +2219,15 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
         }
         completedItems++;
         completedList.push({ source: item.source, dest: finalDest, replaced });
-        if (subErrors.length > 0) errors.push(...subErrors);
+        if (subErrors.length > 0) {
+          oplog.warn(`item completed with ${subErrors.length} child error(s)`, { source: item.source, first: subErrors.slice(0, 5) });
+          errors.push(...subErrors);
+        } else {
+          oplog.debug(`item done in ${Date.now() - itemStart}ms`, { source: item.source });
+        }
       } catch (itemErr) {
         if (itemErr?.code === "CANCELLED") throw itemErr;
+        oplog.warn("item failed", { source: item.source, dest: finalDest, ...errInfo(itemErr) });
         if (itemErr?.partial) errors.push(...subErrors);
         errors.push({ path: item.source, error: itemErr.message });
         const size = itemSizes.get(item.source) || 0;
@@ -1983,6 +2244,7 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
       };
     }
 
+    oplog.info(`${operation} finished: ${completedItems} completed, ${skippedItems} skipped, ${errors.length} error(s)`);
     return {
       success: true,
       completed: completedItems,
@@ -1992,8 +2254,10 @@ ipcMain.handle("batch-file-operation", async (event, items, operation, operation
     };
   } catch (error) {
     if (error?.code === "CANCELLED") {
+      oplog.info(`${operation} cancelled after ${completedItems} item(s)`);
       return { success: false, cancelled: true, error: "Cancelled" };
     }
+    oplog.error(`${operation} aborted`, errInfo(error));
     return { success: false, error: error.message };
   } finally {
     activeOperationCount = Math.max(0, activeOperationCount - 1);

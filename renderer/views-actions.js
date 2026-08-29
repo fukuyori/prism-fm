@@ -44,6 +44,7 @@ async function paste() {
   const sourcePaneId = clipboardSourcePaneId;
   const targetDir = currentPath;
   const { items: batchItems, rejected } = buildTransferItems(itemsToPaste, targetDir);
+  rlog.info("action", `paste (${opType})`, { targetDir, requested: itemsToPaste.length, accepted: batchItems.length, rejected });
 
   if (rejected.length > 0) {
     showNotification(
@@ -214,6 +215,7 @@ async function handleFileDrop(
 
   try {
     const { items: batchItems, rejected } = buildTransferItems(sourcePaths, targetDir);
+    rlog.info("action", `drop (${isCopy ? "copy" : "move"})`, { targetDir, sourcePaneId, targetPaneId, requested: sourcePaths.length, accepted: batchItems.length, rejected });
     if (rejected.length > 0) {
       showNotification(
         `Cannot ${isCopy ? "copy" : "move"} a folder into itself (${rejected.length} item(s) skipped)`,
@@ -306,6 +308,7 @@ async function renameSelected() {
 
   if (validated.name === item.name) return;
 
+  rlog.info("action", "rename", { from: oldPath, to: validated.name });
   try {
     const result = await window.fileManager.renameItem(oldPath, validated.name);
     if (result && result.success) {
@@ -341,6 +344,7 @@ async function renameSelected() {
 }
 
 async function deleteSelected(options = {}) {
+  rlog.info("action", "deleteSelected", { count: selectedItems.size, options });
   if (selectedItems.size === 0) return;
 
   const count = selectedItems.size;
@@ -594,7 +598,7 @@ async function compressSelected() {
 }
 
 async function createNewFolder() {
-  console.log("[action] createNewFolder start", { currentPath });
+  rlog.info("action", "createNewFolder", { dir: currentPath });
   const raw = await showTextInputModal(
     "New Folder",
     "Enter folder name:",
@@ -602,7 +606,7 @@ async function createNewFolder() {
     "Create",
   );
   if (raw === null) {
-    console.log("[action] createNewFolder cancelled");
+    rlog.debug("action", "createNewFolder cancelled");
     return;
   }
 
@@ -648,7 +652,7 @@ async function createNewFolder() {
 }
 
 async function createNewFile() {
-  console.log("[action] createNewFile start", { currentPath });
+  rlog.info("action", "createNewFile", { dir: currentPath });
   const raw = await showTextInputModal(
     "New File",
     "Enter file name:",
@@ -656,7 +660,7 @@ async function createNewFile() {
     "Create",
   );
   if (raw === null) {
-    console.log("[action] createNewFile cancelled");
+    rlog.debug("action", "createNewFile cancelled");
     return;
   }
 

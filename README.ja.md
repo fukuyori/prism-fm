@@ -156,6 +156,18 @@ layerrule = blur,class:prism-fm
 windowrulev2 = opacity 0.9 0.8,class:^(prism-fm)$
 ```
 
+## 不具合報告とログ
+
+Prism FM はログファイルを出力します:
+
+| OS | パス |
+|---|---|
+| Linux | `~/.config/prism-fm/logs/prism-fm.log` |
+| Windows | `%APPDATA%\prism-fm\logs\prism-fm.log` |
+| macOS | `~/Library/Logs/prism-fm/prism-fm.log` |
+
+ツールバーの **Customize** → **Open Log Folder** で開けます。詳細なログが必要な場合は同じ場所の **Debug log** を ON にする（または `PRISM_LOG=debug` で起動）→ 問題を再現 → `prism-fm.log` を添付してください。
+
 ## ライセンス
 
 本フォークは [GPL-3.0](LICENSE) でライセンスされています。
