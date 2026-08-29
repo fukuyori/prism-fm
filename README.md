@@ -103,7 +103,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 - **Transparent UI**: Designed for seamless integration with modern compositors (Hyprland, Sway, etc.) and desktop environments.
 - **Dual Pane Navigation**: Efficient file management with side-by-side views.
 - **Core Operations**: Copy, move, delete, rename, and archive management (extract/compress only; browsing inside archives is not supported).
-- **Drag and Drop**: Drag files out to external apps (native drag). Drop files from external apps or drag within Prism FM to move (hold Ctrl to copy; Option on macOS). Drag and drop into/from archives is not supported. **Wayland limitation**: dragging files *out* to other applications does not work on native Wayland (Chromium/Electron limitation, see CHANGELOG); run with `npm start -- --ozone-platform=x11` if you need it.
+- **Drag and Drop**: Drag files out to external apps (native drag). Drop files from external apps or drag within Prism FM to move (hold Ctrl to copy; Option on macOS). Drag and drop into/from archives is not supported. Dragging files *out* to other apps always offers "copy" (Electron limitation, electron/electron#7207); with **Move on drag-out** enabled (Customize dialog, default on) Prism FM verifies the copy the target made and moves the original to the trash. Hold Ctrl (Option on macOS) while dragging to copy.
 - **Preview System**: Integrated image, PDF, video, and text previews with thumbnail generation.
 - **Tagging**: Essential file organization with color-coded tags.
 - **Properties**: File/folder properties dialog with OS-specific info (Windows attributes, POSIX permissions), click-to-copy for name and path.

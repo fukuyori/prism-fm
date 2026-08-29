@@ -750,6 +750,23 @@ function setupLogControls() {
     label.appendChild(document.createTextNode("Debug log"));
     box.appendChild(openBtn);
     box.appendChild(label);
+
+    // Drag-out move: after a plain drag to another app, verify the copy and
+    // trash the original (Electron can only offer "copy" to the target).
+    const moveLabel = document.createElement("label");
+    moveLabel.style.cssText = label.style.cssText;
+    moveLabel.title = "After dragging files to another app, verify the copy there and move the originals to the trash. Hold Ctrl (Option on macOS) while dragging to copy instead.";
+    const moveCb = document.createElement("input");
+    moveCb.type = "checkbox";
+    moveCb.id = "dragout-move-toggle";
+    moveCb.checked = typeof isDragOutMoveEnabled === "function" ? isDragOutMoveEnabled() : true;
+    moveCb.addEventListener("change", () => {
+      try { localStorage.setItem("dragOutMove", moveCb.checked ? "1" : "0"); } catch { }
+      rlog.info("settings", `dragOutMove=${moveCb.checked}`);
+    });
+    moveLabel.appendChild(moveCb);
+    moveLabel.appendChild(document.createTextNode("Move on drag-out"));
+    box.appendChild(moveLabel);
     titleEl.appendChild(box);
   }
   window.fileManager.getLogInfo().then((info) => {

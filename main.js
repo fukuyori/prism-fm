@@ -238,7 +238,7 @@ const IPC_INFO_CHANNELS = new Set([
   "trash-item", "empty-recycle-bin", "restore-trash-items", "rename-item",
   "create-folder", "create-file", "copy-item", "move-item", "extract-archive",
   "compress-items", "mount-device", "unmount-device", "eject-device",
-  "cancel-operation", "open-file", "open-terminal", "open-terminal-custom",
+  "cancel-operation", "verify-drag-out", "open-file", "open-terminal", "open-terminal-custom",
   "show-in-folder", "set-log-level",
 ]);
 const IPC_SILENT_CHANNELS = new Set(["log-event", "get-log-info"]);
@@ -1764,6 +1764,192 @@ ipcMain.on("start-drag", (event, filePaths) => {
     log.warn("startDrag failed", errInfo(error));
   }
   if (!event.sender.isDestroyed()) event.sender.send("drag-ended");
+});
+
+// ------------------------------------------------ drag-out "move" emulation
+// webContents.startDrag only offers copy (Electron #7207), so a drop into
+// another app always copies. To give a plain drag-out move semantics we
+// verify, after the drag ended, that an identical copy appeared somewhere
+// new (home + mounted volumes), and only then move the original to the
+// trash. Nothing is touched when no verified copy is found (drop into a
+// mail client, cancelled drag, target outside the search roots, ...).
+const DRAG_OUT_SEARCH_DEPTH = 6;
+const DRAG_OUT_NO_CANDIDATE_TIMEOUT_MS = 20 * 1000;
+const DRAG_OUT_COPY_IN_PROGRESS_TIMEOUT_MS = 5 * 60 * 1000;
+const DRAG_OUT_POLL_MS = 1000;
+
+function dragOutSearchRoots() {
+  const roots = [os.homedir()];
+  const mountBases = process.platform === "darwin"
+    ? ["/Volumes"]
+    : [`/run/media/${os.userInfo().username}`, "/media", "/mnt"];
+  for (const base of mountBases) {
+    try {
+      for (const name of fsSync.readdirSync(base)) roots.push(path.join(base, name));
+    } catch { }
+  }
+  return roots.filter((r) => { try { return fsSync.statSync(r).isDirectory(); } catch { return false; } });
+}
+
+// GNU/BSD find per root, in parallel: same basename, created after
+// `sinceEpoch`, skipping hidden dirs and node_modules. -xdev keeps each
+// root on its own filesystem — a FUSE/network mount inside $HOME (rclone,
+// sshfs, gvfs) otherwise turns a 0.2s scan into minutes. Each root is also
+// capped at DRAG_OUT_FIND_TIMEOUT_MS so one slow volume cannot stall the
+// verification. Returns absolute paths.
+const DRAG_OUT_FIND_TIMEOUT_MS = 15 * 1000;
+async function findDragOutCandidates(roots, basename, isDir, sinceEpoch) {
+  const { execFile } = require("child_process");
+  const one = (root) => new Promise((resolve) => {
+    const args = [
+      root, "-maxdepth", String(DRAG_OUT_SEARCH_DEPTH), "-xdev",
+      "(", "-name", ".*", "-o", "-name", "node_modules", ")", "-prune", "-o",
+      "-type", isDir ? "d" : "f", "-name", basename, "-newerct", `@${sinceEpoch}`, "-print",
+    ];
+    execFile("find", args, { maxBuffer: 16 * 1024 * 1024, timeout: DRAG_OUT_FIND_TIMEOUT_MS }, (err, stdout) => {
+      // find exits non-zero on unreadable dirs; stdout is still usable.
+      if (err?.killed) log.warn("drag-out: find timed out", { root });
+      resolve(String(stdout || "").split("\n").filter(Boolean));
+    });
+  });
+  const lists = await Promise.all(roots.map(one));
+  return Array.from(new Set(lists.flat()));
+}
+
+async function hashFile(p) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash("sha256");
+    const rs = fsSync.createReadStream(p);
+    rs.on("data", (c) => h.update(c));
+    rs.on("error", reject);
+    rs.on("end", () => resolve(h.digest("hex")));
+  });
+}
+
+// { status: "match" | "mismatch" | "growing", ... }
+async function compareDragOutCopy(source, candidate, isDir, lastSizes) {
+  if (!isDir) {
+    const [a, b] = await Promise.all([fs.stat(source), fs.stat(candidate)]);
+    if (b.size < a.size) {
+      const prev = lastSizes.get(candidate);
+      lastSizes.set(candidate, b.size);
+      return { status: prev === undefined || b.size > prev ? "growing" : "stalled", size: b.size, expected: a.size };
+    }
+    if (b.size !== a.size) return { status: "mismatch", reason: "size" };
+    const [ha, hb] = await Promise.all([hashFile(source), hashFile(candidate)]);
+    return ha === hb ? { status: "match" } : { status: "mismatch", reason: "content" };
+  }
+  // Directory: same relative file set, sizes and content.
+  const walk = async (root) => {
+    const out = new Map();
+    const rec = async (dir, rel) => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        const r = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isDirectory()) await rec(full, r);
+        else if (e.isFile()) out.set(r, (await fs.stat(full)).size);
+      }
+    };
+    await rec(root, "");
+    return out;
+  };
+  const [sa, sb] = await Promise.all([walk(source), walk(candidate)]);
+  if (sb.size < sa.size) {
+    const total = Array.from(sb.values()).reduce((x, y) => x + y, 0);
+    const prev = lastSizes.get(candidate);
+    lastSizes.set(candidate, total);
+    return { status: prev === undefined || total > prev ? "growing" : "stalled", files: sb.size, expected: sa.size };
+  }
+  for (const [rel, size] of sa) {
+    if (!sb.has(rel)) return { status: "growing", missing: rel };
+    if (sb.get(rel) !== size) {
+      const prev = lastSizes.get(candidate + "|" + rel);
+      lastSizes.set(candidate + "|" + rel, sb.get(rel));
+      return sb.get(rel) < size ? { status: "growing", file: rel } : { status: "mismatch", reason: "size", file: rel };
+    }
+  }
+  if (sb.size !== sa.size) return { status: "mismatch", reason: "extra files" };
+  for (const rel of sa.keys()) {
+    const [ha, hb] = await Promise.all([hashFile(path.join(source, rel)), hashFile(path.join(candidate, rel))]);
+    if (ha !== hb) return { status: "mismatch", reason: "content", file: rel };
+  }
+  return { status: "match" };
+}
+
+ipcMain.handle("verify-drag-out", async (event, sourcePaths, options = {}) => {
+  const operationId = options.operationId ? String(options.operationId) : null;
+  const dlog = log.for(`dragout:${operationId || "-"}`);
+  activeOperationCount++;
+  try {
+    if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
+      return { success: false, error: "No paths" };
+    }
+    if (process.platform === "win32") {
+      return { success: false, error: "Drag-out move verification is not supported on Windows" };
+    }
+    const sinceEpoch = Math.floor((Number(options.startedAt) || Date.now()) / 1000) - 2;
+    const roots = dragOutSearchRoots();
+    dlog.info(`verifying ${sourcePaths.length} item(s)`, { roots, sinceEpoch });
+
+    const moved = [];
+    const notFound = [];
+    const failed = [];
+    const lastSizes = new Map();
+    const pending = [];
+    for (const src of sourcePaths) {
+      try {
+        const st = await fs.lstat(src);
+        if (st.isSymbolicLink()) { notFound.push({ source: src, reason: "symlink" }); continue; }
+        pending.push({ src, isDir: st.isDirectory(), base: path.basename(src) });
+      } catch (e) {
+        failed.push({ source: src, error: e.message });
+      }
+    }
+
+    const t0 = Date.now();
+    let lastProgress = t0;
+    while (pending.length > 0) {
+      if (operationId && cancelOperations.has(operationId)) {
+        dlog.info("cancelled");
+        return { success: false, cancelled: true, moved, error: "Cancelled" };
+      }
+      const now = Date.now();
+      if (now - lastProgress > DRAG_OUT_NO_CANDIDATE_TIMEOUT_MS || now - t0 > DRAG_OUT_COPY_IN_PROGRESS_TIMEOUT_MS) break;
+
+      for (const item of [...pending]) {
+        const candidates = (await findDragOutCandidates(roots, item.base, item.isDir, sinceEpoch))
+          .map((c) => path.resolve(c))
+          .filter((c) => c !== path.resolve(item.src) && !c.startsWith(path.resolve(item.src) + path.sep));
+        if (candidates.length === 0) continue;
+        for (const cand of candidates) {
+          let cmp;
+          try { cmp = await compareDragOutCopy(item.src, cand, item.isDir, lastSizes); }
+          catch (e) { cmp = { status: "error", error: e.message }; }
+          dlog.debug("candidate", { source: item.src, candidate: cand, ...cmp });
+          if (cmp.status === "growing") lastProgress = Date.now();
+          if (cmp.status !== "match") continue;
+          try {
+            await shell.trashItem(item.src);
+            moved.push({ source: item.src, dest: cand });
+            dlog.info("verified copy; original moved to trash", { source: item.src, dest: cand });
+          } catch (e) {
+            failed.push({ source: item.src, dest: cand, error: e.message });
+            dlog.warn("verified copy but could not trash original", { source: item.src, ...errInfo(e) });
+          }
+          pending.splice(pending.indexOf(item), 1);
+          break;
+        }
+      }
+      if (pending.length > 0) await new Promise((r) => setTimeout(r, DRAG_OUT_POLL_MS));
+    }
+    for (const item of pending) notFound.push({ source: item.src, reason: "no verified copy found" });
+    dlog.info(`done: ${moved.length} moved, ${notFound.length} kept, ${failed.length} failed in ${Date.now() - t0}ms`);
+    return { success: true, moved, notFound, failed };
+  } finally {
+    activeOperationCount = Math.max(0, activeOperationCount - 1);
+    if (operationId) cancelOperations.delete(operationId);
+  }
 });
 
 ipcMain.handle("cancel-operation", async (event, operationId) => {

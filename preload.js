@@ -51,6 +51,7 @@ const fileManagerApi = {
   resolveFileConflict: send("resolve-file-conflict"),
 
   startDrag: send("start-drag"),
+  verifyDragOut: invoke("verify-drag-out"),
   onDragEnded: (callback) =>
     ipcRenderer.on("drag-ended", () => callback()),
   onWindowMaximized: (callback) =>

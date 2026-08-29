@@ -8,11 +8,16 @@ All notable changes to Prism FM are documented in this file.
 
 - **Crash on launch under Wayland** -- `screen.getCursorScreenPoint()` (used since 3.5 to open the window on the cursor's monitor) segfaults in Electron 28 on Wayland; the primary display is used there instead (Wayland ignores window positions anyway). Also affected every version since 3.5
 - **`npm start` aborted with "SUID sandbox helper binary ... not configured correctly"** -- on kernels that restrict unprivileged user namespaces (Ubuntu 24.04+), `run-electron.sh` now passes `--no-sandbox` unless `chrome-sandbox` is actually setuid root; the `--no-sandbox` push in main.js ran too late to matter. Falls back to the project-local electron binary when none is on PATH
+- **Drag-out on Wayland works** -- earlier analysis was wrong: `webContents.startDrag` does start a Wayland drag session (confirmed with logging: the call blocks until the drop, no Chromium error). In-app drops of that drag failed only because dragover asked for `dropEffect: "move"` while startDrag allows copy/link — Blink treats that as a refused drop. Fixed via `chooseDropEffect()`; native drag is now the Linux default (`PRISM_NATIVE_DRAG=0` for the HTML5 fallback)
 - **Drag & drop rework** -- `dragstart` no longer starts an HTML5 and a native drag session at once (the double session from 3.7). Windows/macOS: native `webContents.startDrag` only (Electron's documented pattern). Linux: HTML5 session only; pane-to-pane, folder and sidebar drops work again under Wayland. Dropped-file path extraction centralised in `getDroppedPaths()`
 
 ### Added
 
 - **Logging** -- file logger in the main process (`app.getPath("logs")/prism-fm.log`, 5MB × 3 rotation, mirrored to the terminal). Levels `error/warn/info/debug`; set via `PRISM_LOG=debug` or the "Debug log" toggle in the Customize dialog (persisted in `<userData>/logging.json`). "Open Log Folder" button next to it. Recorded: startup environment (versions, Wayland/X11, argv); every IPC handler with arguments, duration and outcome (file operations at info, the rest at debug; secrets redacted); `batch-file-operation` internals (scan totals, disk-space check, conflict prompts and answers, per-item replace/skip/cross-device/failure, child errors); batch delete; operation queue lifecycle (queued/start/completed/failed/cancelled with durations, undo); conflict dialog choices; navigation timing and stale-response discards; drag & drop (dragstart/dragenter/drop/cleanup with state and MIME types); user actions (paste/drop decisions, delete, rename, new folder/file); notifications; renderer `console.*`, `window.onerror`, `unhandledrejection`; main `uncaughtException`/`unhandledRejection`; `render-process-gone`/`child-process-gone`
+
+### Added (cont.)
+
+- **Move on drag-out** -- Electron's `startDrag` can only offer "copy" to other apps (electron/electron#7207), so a drag to the desktop or another file manager always left the original behind. After a plain (no Ctrl/Option) native drag that ended outside the app, Prism FM now searches `$HOME` and mounted volumes (`find -xdev`, depth 6, hidden dirs and `node_modules` skipped, 15s cap per volume) for a file/folder with the same name created since the drag started, verifies it is identical (size, then SHA-256; folders compared recursively), waits while the target is still copying (size growing, up to 5 min), and only then moves the original to the **trash** (never a permanent delete). Nothing happens when no verified copy is found within 20s (drop into a mail client, cancelled drag, target outside the search roots) or when the copy differs. Runs through the operation queue (cancellable); result logged under `[dragout:<opId>]`. Toggle "Move on drag-out" in the Customize dialog; Ctrl/Option-drag always copies. Linux/macOS only
 
 ### Fixed (cont.)
 
@@ -24,7 +29,7 @@ All notable changes to Prism FM are documented in this file.
 
 ### Known limitations
 
-- **Drag-out to other applications on Wayland** -- not possible: Chromium's Wayland backend only starts a drag from inside pointer-event handling, which Electron's `webContents.startDrag` (IPC-driven) never satisfies — verified on GNOME 50 with Electron 28 and 44, from `dragstart` and from a mousedown/threshold detector. An HTML5 drag from web content cannot carry file paths (only text), so other apps receive a "Dragged Text" file. Drag-out works under X11/XWayland (`npm start -- --ozone-platform=x11`), where in-app drops need further work
+- **Drag-out to other applications on Wayland** -- resolved (see "Drag-out on Wayland works" above); the earlier "not possible" conclusion was incorrect. Remaining limitation: the target can only *copy* (Electron #7207); "Move on drag-out" above emulates the move
 
 ## [1.0.0-spumoni.4.1] - 2026-08-29
 

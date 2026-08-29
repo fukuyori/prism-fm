@@ -342,6 +342,14 @@ function usesNativeDrag() {
   return Boolean(window.fileManager.nativeDragOverride);
 }
 
+// Context of the current/last native drag, used after the OS drag ended
+// to decide whether to run the drag-out move verification.
+var lastDragOut = null;
+
+function isDragOutMoveEnabled() {
+  try { return localStorage.getItem("dragOutMove") !== "0"; } catch { return true; }
+}
+
 function beginDragState(element, item) {
   isDragging = true;
   const paneId = element.closest(".file-pane")?.dataset.pane;
@@ -377,6 +385,12 @@ function setupDragHandlers(element, item) {
 
     if (usesNativeDrag()) {
       e.preventDefault();
+      lastDragOut = {
+        paths: [...draggedItems],
+        startedAt: Date.now(),
+        isCopy: isCopyModifier(e),
+        inAppDrop: false,
+      };
       window.fileManager.startDrag(draggedItems);
       return;
     }

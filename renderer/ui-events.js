@@ -68,7 +68,8 @@ function setupSidebarToggle() {
     rlog.info("dnd", "native drag ended (startDrag returned)", { isDragging });
     setTimeout(() => {
       if (isDragging) cleanupDragState();
-    }, 100);
+      maybeVerifyDragOut();
+    }, 150);
   });
 
   // Fallback end-of-drag detection for every platform: once the pointer
@@ -83,6 +84,57 @@ function setupSidebarToggle() {
   });
   document.addEventListener("keydown", (e) => {
     if (isDragging && e.key === "Escape") cleanupDragState();
+  });
+}
+
+// After a native drag ended outside the app with no copy modifier, look for
+// the copy the target made and move the originals to the trash (see
+// verify-drag-out in main.js). Runs through the operation queue so it is
+// visible and cancellable.
+function maybeVerifyDragOut() {
+  const ctx = lastDragOut;
+  lastDragOut = null;
+  if (!ctx || ctx.inAppDrop || ctx.isCopy) return;
+  if (!isDragOutMoveEnabled() || !window.fileManager.verifyDragOut) return;
+  if (window.fileManager.platform === "win32") return;
+
+  const sourceDirs = ctx.paths.map((p) => localParsePath(p).dir);
+  enqueueOperation({
+    label: `Verify drag-out of ${ctx.paths.length} item(s)`,
+    usesProgress: false,
+    run: async (op) => {
+      const result = await window.fileManager.verifyDragOut(ctx.paths, {
+        startedAt: ctx.startedAt,
+        operationId: op.id,
+      });
+      if (!result || !result.success) {
+        const err = new Error(result?.error || "Verification failed");
+        if (result?.cancelled) err.cancelled = true;
+        throw err;
+      }
+      return result;
+    },
+    cancel: async (op) => {
+      if (window.fileManager.cancelOperation) await window.fileManager.cancelOperation(op.id);
+    },
+    onSuccess: async (result) => {
+      const moved = result.moved || [];
+      if (moved.length > 0) {
+        const destDirs = Array.from(new Set(moved.map((m) => localParsePath(m.dest).dir)));
+        showNotification(
+          `Moved ${moved.length} item(s) to ${destDirs.join(", ")} (originals in trash)`,
+        );
+        await refreshPanesShowing(sourceDirs);
+      } else {
+        rlog.info("dnd", "drag-out: no verified copy found, originals kept", { notFound: result.notFound });
+      }
+      if (result.failed?.length) {
+        showNotification(`Could not trash ${result.failed.length} original(s) after drag-out`, "error");
+      }
+    },
+    onError: (error) => {
+      if (!error?.cancelled) rlog.warn("dnd", "drag-out verification failed", error);
+    },
   });
 }
 

@@ -63,6 +63,7 @@
 | 項目 | 内容 | バージョン |
 |---|---|---|
 | Electron 28 → 44 | 28 は 2024 年 6 月にサポート終了。`File.path` 廃止に対応（`webUtils.getPathForFile`）。Wayland/X11 起動、`electron-builder --linux --dir`（builder 24.13.3）、パッケージ済みバイナリ起動を確認。Windows/macOS ビルドは未検証 | main |
+| Move on drag-out | ドラッグアウト後、`$HOME` とマウント済みボリュームを `find -xdev`（深さ 6、隠しディレクトリ/`node_modules` 除外、ボリュームごと 15 秒上限）で同名・新規作成のファイル/フォルダを探し、サイズ→SHA-256（フォルダは再帰）で一致を検証してから元を**ゴミ箱**へ。コピー進行中はサイズ安定まで待機（最大 5 分）。候補なしは 20 秒で終了し何もしない。Ctrl/Option ドラッグと設定 OFF では無効。**FUSE/ネットワークマウント（例: rclone の GoogleDrive）が `$HOME` 直下にあると `-xdev` なしでは探索が数分かかる**ため `-xdev` は必須 | main |
 | ロギング基盤 | ファイルログ（`app.getPath("logs")/prism-fm.log`、5MB×3 ローテーション）、`PRISM_LOG=debug` / Customize の「Debug log」トグル、IPC 自動計測、ファイル操作内部・操作キュー・競合ダイアログ・ナビゲーション・D&D・ユーザー操作の記録、renderer の console/例外転送、`uncaughtException`/`render-process-gone` 等の捕捉、「Open Log Folder」ボタン。詳細は §3 | main |
 | 起動スクリプト | `--ozone-platform=` の明示指定を優先、グローバル electron が無ければプロジェクト内のものを使用 | main |
 
@@ -70,38 +71,22 @@
 
 ## 2. 未解決
 
-### 2.1 Wayland での外部アプリへのドラッグアウト（**アプリ側では解決不能**）
+### 2.1 外部アプリへのドラッグアウト（**解決済み・2026-08-29 追記**）
 
-**症状**: ネイティブ Wayland（GNOME 50 で確認）で、ファイルを Nautilus 等へドラッグすると、ファイルではなく `Dragged Text-<日時>` というテキストファイルが作られる。
+以前の「Wayland では `startDrag` が無視される」という結論は**誤り**だった。ロギング導入後の検証で、Wayland でも `startDrag` はドロップまでブロックして正常にセッションを実行しており（Chromium の `LOG(ERROR)` なし、`startDrag returned after 1647ms`）、外部アプリへのファイル受け渡しも成功していた。
 
-**検証結果**（2026-08-29、Ubuntu / GNOME Shell 50.1 / Wayland）:
+**真の原因（アプリ内ドロップが動かなかった理由）**: `startDrag` は copy/link しか許可しないのに、`dragover` が `dropEffect = "move"` を要求していた。Blink はこれを「ドロップ拒否」と解釈し `drop` を発火しない。`chooseDropEffect()` で `effectAllowed` の範囲内に制限して解決。Linux の既定はネイティブドラッグ（`PRISM_NATIVE_DRAG=0` で HTML5）。
 
-| 方式 | Electron | 結果 |
-|---|---|---|
-| HTML5 ドラッグ + `startDrag` 同時（3.7 の実装） | 28 | ドラッグアウト NG |
-| `dragstart` で `preventDefault` → `startDrag`（Electron 公式パターン） | 28 | ドラッグ自体が開始しない（内部ドロップも NG） |
-| HTML5 ドラッグのみ + `text/uri-list` | 28 | 内部ドロップ OK、外部は「Dragged Text」 |
-| mousedown → 6px 移動検出 → `startDrag`（Blink を経由しない） | 28 | ドラッグ自体が開始しない |
-| `dragstart` → `startDrag` | 44 | ドラッグ自体が開始しない |
-| `dragstart` → `startDrag`、**X11 (XWayland)** | 44 | **ドラッグアウト OK**、内部ドロップ NG（原因未特定） |
+**残る制限**: 受け取り側は常に「コピー」（Electron #7207、クローズ済み）。対策として「Move on drag-out」（§1.4 参照）を実装。検証マトリクスは履歴として下に残す。
 
-**原因**: Chromium の Wayland バックエンドは、ポインタイベント処理の内部（Blink のドラッグ開始）からしか `wl_data_device.start_drag` を発行しない。Electron の `webContents.startDrag` は IPC 経由の別コンテキストから `RunShellDrag` を呼ぶため、Wayland では無視される。一方、Web コンテンツ由来の HTML5 ドラッグは `text/uri-list` を実ファイルとして提供できない（Chromium は `SetFilenames` されたデータにしか `text/uri-list` を付けない。`setData("text/uri-list")` は URL 扱いになり `text/x-moz-url` に化ける）。したがって Wayland 上ではどちらの経路でもファイルを外部に渡せない。
+| 方式 | Electron | 結果（当時の観測） | 後日の解釈 |
+|---|---|---|---|
+| `dragstart` → `preventDefault` → `startDrag` | 28/44 | 内部ドロップ NG、外部 NG | 内部は dropEffect の問題。外部 NG はドラッグアイコンが出ず「何も起きない」と見えていた可能性 |
+| HTML5 のみ + `text/uri-list` | 28/44 | 内部 OK、外部はテキスト | Chromium Wayland は `text/uri-list` を実ファイル名にしか付けない（事実） |
 
-**現在の実装**（main）: Linux は HTML5 ドラッグのみ（内部 D&D 動作）、Windows/macOS はネイティブ `startDrag` のみ。README に制限を明記。回避策は `npm start -- --ozone-platform=x11`。
+### 2.2 X11 でのアプリ内ドロップ失敗（**解決済み**）
 
-**Electron 44 でも同じ**（main に取り込み済み）。Electron / Chromium 側で Wayland の `startDrag` が改善された場合は、`usesNativeDrag()`（`renderer/views-render.js`）で Linux もネイティブに切り替えて再検証する。
-
-### 2.2 X11 でのアプリ内ドロップ失敗（原因未特定）
-
-Electron 44 + `--ozone-platform=x11` + ネイティブドラッグで、外部にはファイルとして渡るが、自ウィンドウへのドロップ（同一ペイン・他ペイン）が動作しない。「`dragover`/`drop` が自ウィンドウに配送されていない」のか「内部状態が先に消えている」のかが未確定。
-
-現在の main は Linux では HTML5 ドラッグを使うため、この経路は既定では通らない。再調査する場合は `usesNativeDrag()` を Linux でも true にした上で:
-
-```
-PRISM_LOG=debug npm start -- --ozone-platform=x11
-```
-
-で操作し、`prism-fm.log` の `[renderer:dnd]`（dragstart → dragenter → drop → cleanup）と `[ipc] start-drag → Nms` を確認する。
+原因は 2.1 と同じ（`dropEffect: "move"`）。
 
 ### 2.3 Windows / macOS のドラッグアウト（未検証）
 

@@ -212,6 +212,7 @@ async function handleFileDrop(
   targetPaneId = activePaneId,
 ) {
   if (sourcePaths.length === 0) return;
+  if (sourcePaneId && typeof lastDragOut !== "undefined" && lastDragOut) lastDragOut.inAppDrop = true;
 
   try {
     const { items: batchItems, rejected } = buildTransferItems(sourcePaths, targetDir);
