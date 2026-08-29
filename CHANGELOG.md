@@ -10,6 +10,10 @@ All notable changes to Prism FM are documented in this file.
 - **`npm start` aborted with "SUID sandbox helper binary ... not configured correctly"** -- on kernels that restrict unprivileged user namespaces (Ubuntu 24.04+), `run-electron.sh` now passes `--no-sandbox` unless `chrome-sandbox` is actually setuid root; the `--no-sandbox` push in main.js ran too late to matter. Falls back to the project-local electron binary when none is on PATH
 - **Drag & drop rework** -- `dragstart` no longer starts an HTML5 and a native drag session at once (the double session from 3.7). Windows/macOS: native `webContents.startDrag` only (Electron's documented pattern). Linux: HTML5 session only; pane-to-pane, folder and sidebar drops work again under Wayland. Dropped-file path extraction centralised in `getDroppedPaths()`
 
+### Changed
+
+- **Electron 28 → 44** -- runtime updated to the current supported line (28 reached end of support in June 2024). Dropped-file paths now come from `webUtils.getPathForFile` (Electron 32 removed `File.path`), exposed as `fileManager.getPathForFile` in preload. Verified: launch under Wayland/X11, `electron-builder --linux --dir` with electron-builder 24.13.3, packaged binary launch. Does not change the Wayland drag-out limitation below
+
 ### Known limitations
 
 - **Drag-out to other applications on Wayland** -- not possible: Chromium's Wayland backend only starts a drag from inside pointer-event handling, which Electron's `webContents.startDrag` (IPC-driven) never satisfies — verified on GNOME 50 with Electron 28 and 44, from `dragstart` and from a mousedown/threshold detector. An HTML5 drag from web content cannot carry file paths (only text), so other apps receive a "Dragged Text" file. Drag-out works under X11/XWayland (`npm start -- --ozone-platform=x11`), where in-app drops need further work

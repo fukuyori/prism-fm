@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 
 const invoke = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
@@ -74,6 +74,16 @@ const fileManagerApi = {
   pickerConfirm: send("picker-confirm"),
   pickerCancel: send("picker-cancel"),
 
+  // Filesystem path of a File from a drop event. File.path was removed in
+  // Electron 32; webUtils.getPathForFile is the replacement.
+  getPathForFile: (file) => {
+    try {
+      if (webUtils && typeof webUtils.getPathForFile === "function") {
+        return webUtils.getPathForFile(file);
+      }
+    } catch { }
+    return file?.path || "";
+  },
   platform: process.platform,
   appVersion: invoke("get-app-version"),
 };

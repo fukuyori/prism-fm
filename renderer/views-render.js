@@ -404,7 +404,8 @@ function setupDragHandlers(element, item) {
 function getDroppedPaths(e) {
   const files = e?.dataTransfer?.files;
   if (!files || files.length === 0) return [];
-  return Array.from(files).map((f) => f.path).filter(Boolean);
+  const toPath = window.fileManager.getPathForFile || ((f) => f.path);
+  return Array.from(files).map((f) => toPath(f)).filter(Boolean);
 }
 
 function cleanupDragState() {
