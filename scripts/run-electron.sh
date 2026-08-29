@@ -8,8 +8,19 @@ ELECTRON_BIN="${ELECTRON_BIN:-electron}"
 # like plain Node.js and breaks the main process bootstrap.
 unset ELECTRON_RUN_AS_NODE
 
+# An explicit --ozone-platform=... on the command line wins over the
+# Wayland auto-detection below (e.g. `npm start -- --ozone-platform=x11`).
+USER_OZONE=""
+for arg in "$@"; do
+  case "$arg" in
+    --ozone-platform=*) USER_OZONE="${arg#--ozone-platform=}" ;;
+  esac
+done
+
 EXTRA_ARGS=""
-if [ -n "$WAYLAND_DISPLAY" ] || [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+if [ -n "$USER_OZONE" ]; then
+  export ELECTRON_OZONE_PLATFORM_HINT="$USER_OZONE"
+elif [ -n "$WAYLAND_DISPLAY" ] || [ "$XDG_SESSION_TYPE" = "wayland" ]; then
   if [ -z "$ELECTRON_OZONE_PLATFORM_HINT" ]; then
     export ELECTRON_OZONE_PLATFORM_HINT=wayland
   fi
