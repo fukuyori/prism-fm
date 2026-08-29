@@ -2,6 +2,14 @@
 
 All notable changes to Prism FM are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Crash on launch under Wayland** -- `screen.getCursorScreenPoint()` (used since 3.5 to open the window on the cursor's monitor) segfaults in Electron 28 on Wayland; the primary display is used there instead (Wayland ignores window positions anyway). Also affected every version since 3.5
+- **`npm start` aborted with "SUID sandbox helper binary ... not configured correctly"** -- on kernels that restrict unprivileged user namespaces (Ubuntu 24.04+), `run-electron.sh` now passes `--no-sandbox` unless `chrome-sandbox` is actually setuid root; the `--no-sandbox` push in main.js ran too late to matter. Falls back to the project-local electron binary when none is on PATH
+- **Drag-out to external apps** -- `dragstart` starts only the native drag (`e.preventDefault()` + `webContents.startDrag`, Electron's documented pattern) instead of an HTML5 and a native session at once; on Linux the `drag-ended` message (sent immediately because `startDrag` returns at once there) no longer clears drag state mid-drag, which made pane-to-pane drops do nothing. Drag end is detected via pointer movement with no button held / Escape. Dropped-file path extraction centralised in `getDroppedPaths()`
+
 ## [1.0.0-spumoni.4.1] - 2026-08-29
 
 ### Fixed

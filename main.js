@@ -246,13 +246,35 @@ function saveWindowBounds() {
   } catch { }
 }
 
+function isWaylandSession() {
+  if (process.platform !== "linux") return false;
+  const forced = process.argv.find((a) => a.startsWith("--ozone-platform="));
+  if (forced) return forced.split("=")[1] === "wayland";
+  const hint = process.env.ELECTRON_OZONE_PLATFORM_HINT;
+  if (hint === "x11") return false;
+  if (hint === "wayland") return true;
+  return Boolean(process.env.WAYLAND_DISPLAY);
+}
+
 function createWindow() {
   const saved = loadWindowBounds();
   const winWidth = saved?.width || 1200;
   const winHeight = saved?.height || 800;
 
-  const cursor = screen.getCursorScreenPoint();
-  const display = screen.getDisplayNearestPoint(cursor);
+  // Place the window on the monitor the cursor is on. Wayland has no
+  // global cursor position and screen.getCursorScreenPoint() segfaults
+  // there in Electron 28, so fall back to the primary display in that case
+  // (Wayland ignores requested window positions anyway).
+  let display;
+  if (isWaylandSession()) {
+    display = screen.getPrimaryDisplay();
+  } else {
+    try {
+      display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    } catch {
+      display = screen.getPrimaryDisplay();
+    }
+  }
   const area = display.workArea;
   const x = Math.round(area.x + (area.width - winWidth) / 2);
   const y = Math.round(area.y + (area.height - winHeight) / 2);
